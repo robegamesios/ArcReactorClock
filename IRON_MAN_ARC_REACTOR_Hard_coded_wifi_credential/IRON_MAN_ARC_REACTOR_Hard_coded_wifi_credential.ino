@@ -22,6 +22,17 @@ int led_ring_brightness_flash = 250; // Flash brightness (0-255)
 #define green 20
 #define blue 255
 
+// Clock types
+#define BUTTON_PIN 22
+#define MODE_DIGITAL 0
+#define MODE_ANALOG 1
+#define MODE_TOTAL 2   // Total number of modes
+
+// Add these with your other variables
+int currentMode = MODE_DIGITAL;  // Start with digital mode
+unsigned long lastButtonPress = 0; // For debouncing
+unsigned long debounceDelay = 300; // Debounce time in milliseconds
+
 // Initialize NeoPixel library
 Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -29,8 +40,8 @@ Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 TFT_eSPI tft = TFT_eSPI();
 
 // WiFi settings - enter your credentials here
-const char* ssid = "YOUR-WIFI-SSID";     // Enter your WiFi network name
-const char* password = "WIFI-PASSWORD";  // Enter your WiFi password
+const char* ssid = "YOUR WIFI SSID";     // Enter your WiFi network name
+const char* password = "YOUR WIFI PASSWORD";  // Enter your WiFi password
 
 // Time settings
 const char* ntpServer = "pool.ntp.org";
@@ -61,6 +72,9 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\nStarting Arc Reactor Digital Clock");
   
+  // Clock types
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
   // Initialize NeoPixel LED ring
   pixels.begin();
   pixels.setBrightness(led_ring_brightness);
@@ -150,38 +164,56 @@ void setup() {
 }
 
 void loop() {
-  // Get time measurements for better display timing
+  // Get current time
   unsigned long currentMillis = millis();
   bool timeUpdateNeeded = (currentMillis - lastTimeCheck >= 100);
   bool colonUpdateNeeded = (currentMillis - lastColonBlink >= 500);
   
-  // Update time if needed (100ms interval for time accuracy)
-  if (timeUpdateNeeded) {
-    lastTimeCheck = currentMillis;
-    updateDigitalTime();
-  }
+  // Check for button press first
+  checkButtonPress();
   
-  // Blink colon every 500ms but only update display if necessary
-  if (colonUpdateNeeded) {
-    lastColonBlink = currentMillis;
+  // Update based on current mode
+  if (currentMode == MODE_DIGITAL) {
+    // Your existing digital clock code
+    if (timeUpdateNeeded) {
+      lastTimeCheck = currentMillis;
+      updateDigitalTime();
+    }
     
-    // Toggle colon state
-    bool oldColonState = showColon;
-    showColon = !showColon;
-    
-    // Only call update if colon state changed and no time update is imminent
-    if (oldColonState != showColon) {
-      // Update only the colon part, not the entire time display
-      tft.fillRect(clockCenterX - 15, clockCenterY - 25, 25, 45, bgColor);
-      if (showColon) {
-        tft.setTextSize(4);
-        tft.setTextColor(TFT_CYAN);
-        tft.setCursor(clockCenterX - 10, clockCenterY - 20);
-        tft.print(":");
-      }
+    // Blink colon every 500ms but only update display if necessary
+    if (colonUpdateNeeded) {
+      lastColonBlink = currentMillis;
       
-      // Update the state tracking
-      prevColonState = showColon;
+      // Toggle colon state
+      bool oldColonState = showColon;
+      showColon = !showColon;
+      
+      // Only call update if colon state changed
+      if (oldColonState != showColon) {
+        // Update only the colon part, not the entire time display
+        tft.fillRect(clockCenterX - 15, clockCenterY - 25, 25, 45, bgColor);
+        if (showColon) {
+          tft.setTextSize(4);
+          tft.setTextColor(TFT_CYAN);
+          tft.setCursor(clockCenterX - 10, clockCenterY - 20);
+          tft.print(":");
+        }
+        
+        // Update the state tracking
+        prevColonState = showColon;
+      }
+    }
+  } else if (currentMode == MODE_ANALOG) {
+    // Only update the analog clock every second
+    if (currentMillis - lastTimeCheck >= 1000) {
+      lastTimeCheck = currentMillis;
+      
+      // Clear center area (keep the background elements)
+      tft.fillCircle(clockCenterX, clockCenterY, clockRadius * 0.65, bgColor);
+      tft.drawCircle(clockCenterX, clockCenterY, clockRadius * 0.65, TFT_CYAN);
+      
+      // Draw analog clock
+      drawAnalogClock();
     }
   }
   
@@ -286,7 +318,6 @@ void updateDigitalTime() {
       }
       
       // Clear and redraw hours area only if it changed
-      // Adjusted position back to the left a bit
       tft.fillRect(clockCenterX - 63, clockCenterY - 25, 65, 45, bgColor);
       tft.setTextSize(4);
       tft.setTextColor(TFT_CYAN);
@@ -355,7 +386,7 @@ void updateDigitalTime() {
   }
 }
 
-// LED ring functions from the original code
+// LED ring functions
 void blue_light() {
   pixels.setBrightness(led_ring_brightness);
   // Set all pixels to blue color
@@ -380,4 +411,94 @@ void flash_cuckoo() {
     delay(7);
   }
   blue_light();
+}
+
+void checkButtonPress() {
+  // Check if button is pressed (will be LOW because of INPUT_PULLUP)
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    // Debounce
+    if (millis() - lastButtonPress > debounceDelay) {
+      // Change mode
+      currentMode = (currentMode + 1) % MODE_TOTAL;
+      
+      // Clear screen and redraw background based on new mode
+      drawArcReactorBackground();
+      
+      // Flash LEDs to indicate mode change
+      flash_cuckoo();
+      
+      // Update display immediately
+      if (currentMode == MODE_DIGITAL) {
+        // Force time update by invalidating previous values
+        prevHours = -1;
+        prevMinutes = -1;
+        prevSeconds = -1;
+        updateDigitalTime();
+      } else if (currentMode == MODE_ANALOG) {
+        drawAnalogClock();
+      }
+      
+      lastButtonPress = millis();
+    }
+  }
+}
+
+void drawAnalogClock() {
+  // Get current time
+  if (WiFi.status() == WL_CONNECTED) {
+    struct tm timeinfo;
+    if(getLocalTime(&timeinfo)) {
+      hours = timeinfo.tm_hour;
+      minutes = timeinfo.tm_min;
+      seconds = timeinfo.tm_sec;
+      
+      // Convert to 12-hour format for analog display
+      if (hours > 12) {
+        hours -= 12;
+      }
+      if (hours == 0) {
+        hours = 12;
+      }
+    }
+  }
+  
+  // Calculate hand angles
+  float secondAngle = seconds * 6; // 6 degrees per second
+  float minuteAngle = minutes * 6 + (seconds * 0.1); // 6 degrees per minute + slight adjustment for seconds
+  float hourAngle = hours * 30 + (minutes * 0.5); // 30 degrees per hour + adjustment for minutes
+  
+  // Get the hand lengths based on clock radius
+  int secondHandLength = clockRadius * 0.8;
+  int minuteHandLength = clockRadius * 0.7;
+  int hourHandLength = clockRadius * 0.5;
+  
+  // Draw hour markers (12 dots around the clock)
+  for (int i = 0; i < 12; i++) {
+    float angle = i * 30 * DEG_TO_RAD; // 30 degrees per hour mark
+    int x = clockCenterX + sin(angle) * (clockRadius * 0.8);
+    int y = clockCenterY - cos(angle) * (clockRadius * 0.8);
+    
+    tft.fillCircle(x, y, 3, TFT_CYAN);
+  }
+  
+  // Draw hour hand
+  float hourRad = hourAngle * DEG_TO_RAD;
+  int hourX = clockCenterX + sin(hourRad) * hourHandLength;
+  int hourY = clockCenterY - cos(hourRad) * hourHandLength;
+  tft.drawLine(clockCenterX, clockCenterY, hourX, hourY, TFT_WHITE);
+  
+  // Draw minute hand
+  float minuteRad = minuteAngle * DEG_TO_RAD;
+  int minuteX = clockCenterX + sin(minuteRad) * minuteHandLength;
+  int minuteY = clockCenterY - cos(minuteRad) * minuteHandLength;
+  tft.drawLine(clockCenterX, clockCenterY, minuteX, minuteY, TFT_YELLOW);
+  
+  // Draw second hand
+  float secondRad = secondAngle * DEG_TO_RAD;
+  int secondX = clockCenterX + sin(secondRad) * secondHandLength;
+  int secondY = clockCenterY - cos(secondRad) * secondHandLength;
+  tft.drawLine(clockCenterX, clockCenterY, secondX, secondY, TFT_RED);
+  
+  // Draw center dot
+  tft.fillCircle(clockCenterX, clockCenterY, 5, TFT_CYAN);
 }
