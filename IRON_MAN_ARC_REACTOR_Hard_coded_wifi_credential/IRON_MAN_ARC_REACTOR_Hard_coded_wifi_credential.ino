@@ -1,6 +1,7 @@
 /*
- * Arc Reactor Digital Clock with GC9A01 Round Display and NeoPixel LED Ring
- * Digital time display with Arc Reactor aesthetic
+ * Pip-Boy 3000 Style Digital Clock with GC9A01 Round Display and NeoPixel LED Ring
+ * Based on Fallout's iconic wrist-mounted computer
+ * Simplified version with focus on time display
  */
 
 #include <SPI.h>
@@ -8,6 +9,7 @@
 #include "Adafruit_NeoPixel.h"
 #include <WiFi.h>
 #include <time.h>
+#include <SPIFFS.h>  // For file system access
 
 // Define pins for NeoPixel LED ring
 #define LED_PIN 21
@@ -17,21 +19,17 @@
 int led_ring_brightness = 10;      // Normal brightness (0-255)
 int led_ring_brightness_flash = 250; // Flash brightness (0-255)
 
-// LED ring color settings
-#define red 00
-#define green 20
-#define blue 255
+// LED ring color settings - Pip-Boy green
+#define red 0
+#define green 255
+#define blue 50
 
-// Clock types
+// Button pin for mode switching
 #define BUTTON_PIN 22
-#define MODE_DIGITAL 0
-#define MODE_ANALOG 1
-#define MODE_TOTAL 2   // Total number of modes
 
-// Add these with your other variables
-int currentMode = MODE_DIGITAL;  // Start with digital mode
-unsigned long lastButtonPress = 0; // For debouncing
-unsigned long debounceDelay = 300; // Debounce time in milliseconds
+// Colors
+#define PIP_GREEN 0x07E0 // Bright green
+#define PIP_BLACK 0x0000
 
 // Initialize NeoPixel library
 Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -40,46 +38,48 @@ Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 TFT_eSPI tft = TFT_eSPI();
 
 // WiFi settings - enter your credentials here
-const char* ssid = "YOUR WIFI SSID";     // Enter your WiFi network name
-const char* password = "YOUR WIFI PASSWORD";  // Enter your WiFi password
+const char* ssid = "SSID";     // Enter your WiFi network name
+const char* password = "PASSWORD";  // Enter your WiFi password
 
 // Time settings
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = -28800;  // PST offset (-8 hours * 3600 seconds/hour)
-const int   daylightOffset_sec = 3600; // Daylight saving time adjustment (1 hour)
+const long gmtOffset_sec = -28800;  // PST offset (-8 hours * 3600 seconds/hour)
+const int daylightOffset_sec = 3600; // Daylight saving time adjustment (1 hour)
 
-// Clock variables
-int clockCenterX;
-int clockCenterY;
-int clockRadius;
+// Display variables
+int screenCenterX;
+int screenCenterY;
+int screenRadius;
+
+// Time and date variables
 int hours = 12, minutes = 0, seconds = 0;
-int prevHours = -1, prevMinutes = -1, prevSeconds = -1; // Track previous time values
-bool prevColonState = false;                          // Track previous colon state
-bool is24Hour = false;  // Set to true for 24-hour format
-bool showColon = true;  // For blinking colon
-char timeStr[20];       // Buffer for formatting time strings
+int day = 1, month = 1, year = 2025;
+String dayOfWeek = "WEDNESDAY";
+bool is24Hour = false; // Use 12-hour format by default
+
+// Timing variables
 unsigned long lastTimeCheck = 0;
-unsigned long lastColonBlink = 0;
-uint16_t bgColor = 0x000A;  // Very dark blue background color
+unsigned long lastButtonPress = 0;
+unsigned long debounceDelay = 300; // Debounce time in milliseconds
 
 // Function prototypes
-void drawArcReactorBackground();
-void updateDigitalTime();
-void blue_light();
-void flash_cuckoo();
+void drawPipBoyInterface();
+void updateTimeAndDate();
+void flashEffect();
+void greenLight();
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\nStarting Arc Reactor Digital Clock");
+  Serial.println("\nStarting Pip-Boy 3000 Clock");
   
-  // Clock types
+  // Configure button
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   // Initialize NeoPixel LED ring
   pixels.begin();
   pixels.setBrightness(led_ring_brightness);
   
-  // Turn on all LEDs one by one with blue color
+  // Turn on all LEDs one by one with Pip-Boy green color
   for(int i=0; i<NUMPIXELS; i++) {
     pixels.setPixelColor(i, pixels.Color(red, green, blue));
     pixels.show();
@@ -87,7 +87,7 @@ void setup() {
   }
   
   // Flash the LEDs to show initialization
-  flash_cuckoo();
+  flashEffect();
   
   // CRITICAL FIX: Reinitialize SPI with the correct pins
   // This is necessary for many GC9A01 displays to work with ESP32
@@ -102,17 +102,24 @@ void setup() {
   // This helps reduce flickering for some displays
   SPI.setFrequency(27000000); // Set SPI clock to 27MHz for stability
   
-  tft.fillScreen(TFT_BLACK);
+  tft.fillScreen(PIP_BLACK);
   
   // Get display dimensions
-  clockCenterX = tft.width() / 2;
-  clockCenterY = tft.height() / 2;
-  clockRadius = min(clockCenterX, clockCenterY) - 10;
+  screenCenterX = tft.width() / 2;
+  screenCenterY = tft.height() / 2;
+  screenRadius = min(screenCenterX, screenCenterY) - 10;
   
   Serial.print("Display dimensions: ");
   Serial.print(tft.width());
   Serial.print("x");
   Serial.println(tft.height());
+  
+  // Initialize SPIFFS for possible future use
+  if (!SPIFFS.begin(true)) {
+    Serial.println("SPIFFS Mount Failed");
+  } else {
+    Serial.println("SPIFFS Mounted");
+  }
   
   // Connect to WiFi
   Serial.print("Connecting to WiFi");
@@ -136,123 +143,152 @@ void setup() {
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     
     // Display connection status on screen
-    tft.fillScreen(TFT_BLACK);
+    tft.fillScreen(PIP_BLACK);
     tft.setTextSize(2);
-    tft.setTextColor(TFT_GREEN);
+    tft.setTextColor(PIP_GREEN);
     tft.setCursor(40, 80);
-    tft.println("WiFi Connected");
-    tft.setCursor(40, 110);
-    tft.println("Getting Time...");
+    tft.println("VAULT-TEC");
+    tft.setCursor(20, 110);
+    tft.println("INITIALIZING...");
     delay(1000);
   } else {
     Serial.println();
-    Serial.println("WiFi connection failed. Using default time.");
+    Serial.println("WiFi connection failed. Using default values.");
     
     // Display status on screen
-    tft.fillScreen(TFT_BLACK);
+    tft.fillScreen(PIP_BLACK);
     tft.setTextSize(2);
-    tft.setTextColor(TFT_RED);
-    tft.setCursor(40, 100);
-    tft.println("WiFi Failed");
-    tft.setCursor(30, 130);
-    tft.println("Using Default Time");
+    tft.setTextColor(PIP_GREEN);
+    tft.setCursor(40, 80);
+    tft.println("VAULT-TEC");
+    tft.setCursor(40, 110);
+    tft.println("OFFLINE MODE");
     delay(1000);
   }
   
-  // Draw initial clock background
-  drawArcReactorBackground();
+  // Draw initial Pip-Boy interface
+  drawPipBoyInterface();
 }
 
 void loop() {
-  // Get current time
   unsigned long currentMillis = millis();
-  bool timeUpdateNeeded = (currentMillis - lastTimeCheck >= 100);
-  bool colonUpdateNeeded = (currentMillis - lastColonBlink >= 500);
   
-  // Check for button press first
-  checkButtonPress();
-  
-  // Update based on current mode
-  if (currentMode == MODE_DIGITAL) {
-    // Your existing digital clock code
-    if (timeUpdateNeeded) {
-      lastTimeCheck = currentMillis;
-      updateDigitalTime();
-    }
-    
-    // Blink colon every 500ms but only update display if necessary
-    if (colonUpdateNeeded) {
-      lastColonBlink = currentMillis;
-      
-      // Toggle colon state
-      bool oldColonState = showColon;
-      showColon = !showColon;
-      
-      // Only call update if colon state changed
-      if (oldColonState != showColon) {
-        // Update only the colon part, not the entire time display
-        tft.fillRect(clockCenterX - 15, clockCenterY - 25, 25, 45, bgColor);
-        if (showColon) {
-          tft.setTextSize(4);
-          tft.setTextColor(TFT_CYAN);
-          tft.setCursor(clockCenterX - 10, clockCenterY - 20);
-          tft.print(":");
-        }
-        
-        // Update the state tracking
-        prevColonState = showColon;
-      }
-    }
-  } else if (currentMode == MODE_ANALOG) {
-    // Only update the analog clock every second
-    if (currentMillis - lastTimeCheck >= 1000) {
-      lastTimeCheck = currentMillis;
-      
-      // Clear center area (keep the background elements)
-      tft.fillCircle(clockCenterX, clockCenterY, clockRadius * 0.65, bgColor);
-      tft.drawCircle(clockCenterX, clockCenterY, clockRadius * 0.65, TFT_CYAN);
-      
-      // Draw analog clock
-      drawAnalogClock();
+  // Check for button press (for future functionality)
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    if (currentMillis - lastButtonPress > debounceDelay) {
+      // Button was pressed - you can add mode-switching code here
+      flashEffect(); // Visual feedback for button press
+      lastButtonPress = currentMillis;
     }
   }
   
-  // LED ring effect every minute (when seconds = 0)
-  if (seconds == 0 && (currentMillis - lastTimeCheck < 1000)) {
-    flash_cuckoo();
-  } else {
-    // Only update LEDs if needed to avoid SPI conflicts
-    static unsigned long lastLEDUpdate = 0;
-    if (currentMillis - lastLEDUpdate > 500) { // Update LEDs at most every 500ms
-      blue_light();
-      lastLEDUpdate = currentMillis;
-    }
+  // Update time and date every second
+  if (currentMillis - lastTimeCheck >= 1000) {
+    lastTimeCheck = currentMillis;
+    updateTimeAndDate();
+  }
+  
+  // Maintain LED ring effect
+  static unsigned long lastLEDUpdate = 0;
+  if (currentMillis - lastLEDUpdate > 500) { // Update LEDs every 500ms
+    greenLight();
+    lastLEDUpdate = currentMillis;
   }
 }
 
-void drawArcReactorBackground() {
+void drawPipBoyInterface() {
   // Clear the display
-  tft.fillScreen(TFT_BLACK);
+  tft.fillScreen(PIP_BLACK);
   
-  // Draw outer circle of Arc Reactor
-  tft.drawCircle(clockCenterX, clockCenterY, clockRadius, TFT_BLUE);
-  tft.drawCircle(clockCenterX, clockCenterY, clockRadius - 1, TFT_BLUE);
+  // Draw day of week at top - Using appropriate font size
+  // Moved lower as requested
+  tft.setTextSize(2);
+  tft.setTextColor(PIP_GREEN);
+  int dayWidth = dayOfWeek.length() * 12; // Approximate width for font
+  tft.setCursor(screenCenterX - (dayWidth/2), 25); // Moved lower from 10 to 25
+  tft.println(dayOfWeek);
   
-  // Draw inner circle of Arc Reactor with dark blue background
-  tft.fillCircle(clockCenterX, clockCenterY, clockRadius * 0.85, TFT_NAVY);
-  tft.drawCircle(clockCenterX, clockCenterY, clockRadius * 0.85, TFT_CYAN);
-    
-  // Draw inner glowing center of Arc Reactor (slightly darker navy blue)
-  tft.fillCircle(clockCenterX, clockCenterY, clockRadius * 0.65, 0x000A); // Very dark blue
-  tft.drawCircle(clockCenterX, clockCenterY, clockRadius * 0.65, TFT_CYAN);
+  // Draw date with larger font as requested
+  tft.setTextSize(2); // Increased from 1 to 2
+  char dateStr[20];
+  sprintf(dateStr, "%02d.%02d.%04d", day, month, year);
+  // Calculate width to center text
+  int dateWidth = strlen(dateStr) * 12; // Approximate width for font size 2
+  tft.setCursor(screenCenterX - (dateWidth/2), 50); // Position below day of week
+  tft.println(dateStr);
   
-  // Draw decorative circles for Arc Reactor effect
-  tft.drawCircle(clockCenterX, clockCenterY, clockRadius * 0.55, TFT_BLUE);
-  tft.drawCircle(clockCenterX, clockCenterY, clockRadius * 0.45, TFT_BLUE);
+  // Add a static Pip-Boy figure - moved slightly to the right from the far left
+  // Just simple face and body
+  int figureX = 75; // Adjusted position more toward center
+  
+  // Head - simple circle with face
+  tft.fillCircle(figureX, 100, 15, PIP_GREEN); // Made slightly larger
+  
+  // Eyes
+  tft.fillCircle(figureX - 5, 97, 2, PIP_BLACK);
+  tft.fillCircle(figureX + 5, 97, 2, PIP_BLACK);
+  
+  // Mouth - simple line for neutral/sad expression
+  tft.drawFastHLine(figureX - 5, 105, 10, PIP_BLACK);
+  
+  // Body - simple rectangle
+  tft.fillRect(figureX - 10, 115, 20, 30, PIP_GREEN);
+  
+  // Arms - simple lines
+  tft.drawLine(figureX - 10, 120, figureX - 20, 130, PIP_GREEN);
+  tft.drawLine(figureX + 10, 120, figureX + 20, 130, PIP_GREEN);
+  
+  // Legs - simple lines
+  tft.drawLine(figureX - 5, 145, figureX - 5, 165, PIP_GREEN);
+  tft.drawLine(figureX + 5, 145, figureX + 5, 165, PIP_GREEN);
+  
+  // Draw time on right side with larger font size
+  tft.setTextSize(5); // Increased from 4 to 5
+  char timeStr[6];
+  
+  // Lower the time display slightly
+  int timeY = 80;  // Starting Y position for hours
+  
+  // Hours
+  int displayHours = is24Hour ? hours : (hours > 12 ? hours - 12 : (hours == 0 ? 12 : hours));
+  sprintf(timeStr, "%02d", displayHours);
+  tft.setCursor(120, timeY); // Left-aligned time
+  tft.println(timeStr);
+  
+  // Seconds (next to hours)
+  tft.setTextSize(2);
+  sprintf(timeStr, "%02d", seconds);
+  tft.setCursor(195, timeY + 10); // Right of hours
+  tft.println(timeStr);
+  
+  // Minutes
+  tft.setTextSize(5);
+  sprintf(timeStr, "%02d", minutes);
+  tft.setCursor(120, timeY + 50); // Below hours
+  tft.println(timeStr);
+  
+  // AM/PM indicator (right of minutes)
+  tft.setTextSize(2);
+  tft.setCursor(195, timeY + 60); // Right of minutes
+  tft.println(hours >= 12 ? "PM" : "AM");
+  
+  // Draw PIP-BOY 3000 and ROBCO INDUSTRIES higher up on the screen
+  tft.setTextSize(2); // Increased from 1 to 2 as requested
+  
+  // Calculate width to center text
+  int pipBoyWidth = 11 * 12; // "PIP-BOY 3000" is 11 chars, approx 12 pixels per char at size 2
+  int robcoWidth = 8 * 12; // "ROBCO IND"
+  
+  // Position them higher on the screen
+  tft.setCursor(screenCenterX - (pipBoyWidth/2), 180);
+  tft.println("PIP-BOY 3000");
+  
+  tft.setCursor(screenCenterX - (robcoWidth/2), 200);
+  tft.println("ROBCO IND");
 }
 
-void updateDigitalTime() {
-  // Get current time if WiFi is connected
+void updateTimeAndDate() {
+  // Get current time and date if WiFi is connected
   if (WiFi.status() == WL_CONNECTED) {
     struct tm timeinfo;
     if(getLocalTime(&timeinfo)) {
@@ -260,143 +296,100 @@ void updateDigitalTime() {
       minutes = timeinfo.tm_min;
       seconds = timeinfo.tm_sec;
       
-      // Convert to 12-hour format if needed
-      if (!is24Hour && hours > 12) {
-        hours -= 12;
-      }
-      if (!is24Hour && hours == 0) {
-        hours = 12;
+      day = timeinfo.tm_mday;
+      month = timeinfo.tm_mon + 1; // tm_mon is 0-11
+      year = timeinfo.tm_year + 1900; // tm_year is years since 1900
+      
+      // Get day of week
+      switch(timeinfo.tm_wday) {
+        case 0: dayOfWeek = "SUNDAY"; break;
+        case 1: dayOfWeek = "MONDAY"; break;
+        case 2: dayOfWeek = "TUESDAY"; break;
+        case 3: dayOfWeek = "WEDNESDAY"; break;
+        case 4: dayOfWeek = "THURSDAY"; break;
+        case 5: dayOfWeek = "FRIDAY"; break;
+        case 6: dayOfWeek = "SATURDAY"; break;
       }
     }
   } else {
     // Increment time manually if no WiFi
-    if (millis() - lastTimeCheck >= 1000) {
-      seconds++;
-      if (seconds >= 60) {
-        seconds = 0;
-        minutes++;
-        if (minutes >= 60) {
-          minutes = 0;
-          hours++;
-          if (!is24Hour && hours > 12) {
-            hours = 1;
-          }
-          if (is24Hour && hours > 23) {
-            hours = 0;
-          }
+    seconds++;
+    if (seconds >= 60) {
+      seconds = 0;
+      minutes++;
+      if (minutes >= 60) {
+        minutes = 0;
+        hours++;
+        if (hours >= 24) {
+          hours = 0;
+          // Here we could also increment the date, but keeping it simple
         }
       }
     }
   }
   
-  // Only update the display if the time or colon state has changed
-  if (hours != prevHours || minutes != prevMinutes || seconds != prevSeconds || showColon != prevColonState) {
-    // Handle seconds update - MOVED TO TOP for symmetry
-    if (seconds != prevSeconds) {
-      // Format seconds with leading zero if needed 
-      if (seconds < 10) {
-        sprintf(timeStr, "0%d", seconds);
-      } else {
-        sprintf(timeStr, "%d", seconds);
-      }
-      
-      // Clear and redraw seconds area at the top of the display
-      tft.fillRect(clockCenterX - 15, clockCenterY - 50, 40, 20, bgColor);
-      tft.setTextSize(2);
-      tft.setTextColor(TFT_CYAN);
-      tft.setCursor(clockCenterX - 10, clockCenterY - 50);
-      tft.print(timeStr);
-    }
-
-    // Handle hours update
-    if (hours != prevHours || (minutes != prevMinutes && hours < 10)) {
-      // Format hours with leading zero if needed
-      if (hours < 10) {
-        sprintf(timeStr, "0%d", hours);
-      } else {
-        sprintf(timeStr, "%d", hours);
-      }
-      
-      // Clear and redraw hours area only if it changed
-      tft.fillRect(clockCenterX - 63, clockCenterY - 25, 65, 45, bgColor);
-      tft.setTextSize(4);
-      tft.setTextColor(TFT_CYAN);
-      tft.setCursor(clockCenterX - 58, clockCenterY - 20);
-      tft.print(timeStr);
-    }
-    
-    // Handle colon update (only if colon state changed)
-    if (showColon != prevColonState) {
-      tft.fillRect(clockCenterX - 15, clockCenterY - 25, 25, 45, bgColor);
-      if (showColon) {
-        tft.setTextSize(4);
-        tft.setTextColor(TFT_CYAN);
-        tft.setCursor(clockCenterX - 10, clockCenterY - 20);
-        tft.print(":");
-      }
-    }
-    
-    // Handle minutes update
-    if (minutes != prevMinutes) {
-      // Format minutes with leading zero if needed
-      if (minutes < 10) {
-        sprintf(timeStr, "0%d", minutes);
-      } else {
-        sprintf(timeStr, "%d", minutes);
-      }
-      
-      // Clear and redraw minutes area only if it changed
-      tft.fillRect(clockCenterX + 10, clockCenterY - 25, 50, 45, bgColor);
-      tft.setTextSize(4);
-      tft.setTextColor(TFT_CYAN);
-      tft.setCursor(clockCenterX + 10, clockCenterY - 20);
-      tft.print(timeStr);
-    }
-    
-    // Handle AM/PM indicator (only in 12-hour mode and if hour changed)
-    if (!is24Hour && (hours != prevHours || (prevHours == -1))) {
-      struct tm timeinfo;
-      bool isPM = false;
-      
-      if (WiFi.status() == WL_CONNECTED && getLocalTime(&timeinfo)) {
-        isPM = (timeinfo.tm_hour >= 12);
-      } else {
-        // For manual time, use a simple approximation
-        isPM = (millis() / (12 * 60 * 60 * 1000)) % 2;
-      }
-      
-      // Position for AM/PM indicator
-      tft.fillRect(clockCenterX - 15, clockCenterY + 35, 40, 20, bgColor);
-      tft.setTextSize(2);
-      tft.setTextColor(TFT_CYAN);
-      if (isPM) {
-        tft.setCursor(clockCenterX - 10, clockCenterY + 35);
-        tft.println("PM");
-      } else {
-        tft.setCursor(clockCenterX - 10, clockCenterY + 35);
-        tft.println("AM");
-      }
-    }
-    
-    // Save current state for next comparison
-    prevHours = hours;
-    prevMinutes = minutes;
-    prevSeconds = seconds;
-    prevColonState = showColon;
-  }
+  // Update time display
+  // Day of week at top
+  tft.fillRect(screenCenterX - 70, 25, 140, 20, PIP_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(PIP_GREEN);
+  int dayWidth = dayOfWeek.length() * 12; // Approximate width for font size 2
+  tft.setCursor(screenCenterX - (dayWidth/2), 25);
+  tft.println(dayOfWeek);
+  
+  // Date
+  tft.fillRect(screenCenterX - 70, 50, 140, 20, PIP_BLACK);
+  tft.setTextSize(2);
+  char dateStr[20];
+  sprintf(dateStr, "%02d.%02d.%04d", day, month, year);
+  int dateWidth = strlen(dateStr) * 12;
+  tft.setCursor(screenCenterX - (dateWidth/2), 50);
+  tft.println(dateStr);
+  
+  // Define time position
+  int timeY = 80;
+  char timeStr[6];
+  
+  // Hours - with larger font
+  tft.fillRect(120, timeY, 70, 40, PIP_BLACK);
+  tft.setTextSize(5);
+  int displayHours = is24Hour ? hours : (hours > 12 ? hours - 12 : (hours == 0 ? 12 : hours));
+  sprintf(timeStr, "%02d", displayHours);
+  tft.setCursor(120, timeY);
+  tft.println(timeStr);
+  
+  // Seconds (next to hours)
+  tft.fillRect(195, timeY + 10, 30, 20, PIP_BLACK);
+  tft.setTextSize(2);
+  sprintf(timeStr, "%02d", seconds);
+  tft.setCursor(195, timeY + 10);
+  tft.println(timeStr);
+  
+  // Minutes - with larger font
+  tft.fillRect(120, timeY + 50, 70, 40, PIP_BLACK);
+  tft.setTextSize(5);
+  sprintf(timeStr, "%02d", minutes);
+  tft.setCursor(120, timeY + 50);
+  tft.println(timeStr);
+  
+  // AM/PM (next to minutes)
+  tft.fillRect(195, timeY + 60, 30, 20, PIP_BLACK);
+  tft.setTextSize(2);
+  tft.setCursor(195, timeY + 60);
+  tft.println((is24Hour || hours < 12) ? "AM" : "PM");
 }
 
 // LED ring functions
-void blue_light() {
+void greenLight() {
   pixels.setBrightness(led_ring_brightness);
-  // Set all pixels to blue color
+  // Set all pixels to Pip-Boy green color
   for(int i=0; i<NUMPIXELS; i++) {
     pixels.setPixelColor(i, pixels.Color(red, green, blue));
   }
   pixels.show();
 }
 
-void flash_cuckoo() {
+void flashEffect() {
   pixels.setBrightness(led_ring_brightness_flash);
   // Set all pixels to white
   for(int i=0; i<NUMPIXELS; i++) {
@@ -410,95 +403,5 @@ void flash_cuckoo() {
     pixels.show();
     delay(7);
   }
-  blue_light();
-}
-
-void checkButtonPress() {
-  // Check if button is pressed (will be LOW because of INPUT_PULLUP)
-  if (digitalRead(BUTTON_PIN) == LOW) {
-    // Debounce
-    if (millis() - lastButtonPress > debounceDelay) {
-      // Change mode
-      currentMode = (currentMode + 1) % MODE_TOTAL;
-      
-      // Clear screen and redraw background based on new mode
-      drawArcReactorBackground();
-      
-      // Flash LEDs to indicate mode change
-      flash_cuckoo();
-      
-      // Update display immediately
-      if (currentMode == MODE_DIGITAL) {
-        // Force time update by invalidating previous values
-        prevHours = -1;
-        prevMinutes = -1;
-        prevSeconds = -1;
-        updateDigitalTime();
-      } else if (currentMode == MODE_ANALOG) {
-        drawAnalogClock();
-      }
-      
-      lastButtonPress = millis();
-    }
-  }
-}
-
-void drawAnalogClock() {
-  // Get current time
-  if (WiFi.status() == WL_CONNECTED) {
-    struct tm timeinfo;
-    if(getLocalTime(&timeinfo)) {
-      hours = timeinfo.tm_hour;
-      minutes = timeinfo.tm_min;
-      seconds = timeinfo.tm_sec;
-      
-      // Convert to 12-hour format for analog display
-      if (hours > 12) {
-        hours -= 12;
-      }
-      if (hours == 0) {
-        hours = 12;
-      }
-    }
-  }
-  
-  // Calculate hand angles
-  float secondAngle = seconds * 6; // 6 degrees per second
-  float minuteAngle = minutes * 6 + (seconds * 0.1); // 6 degrees per minute + slight adjustment for seconds
-  float hourAngle = hours * 30 + (minutes * 0.5); // 30 degrees per hour + adjustment for minutes
-  
-  // Get the hand lengths based on clock radius
-  int secondHandLength = clockRadius * 0.8;
-  int minuteHandLength = clockRadius * 0.7;
-  int hourHandLength = clockRadius * 0.5;
-  
-  // Draw hour markers (12 dots around the clock)
-  for (int i = 0; i < 12; i++) {
-    float angle = i * 30 * DEG_TO_RAD; // 30 degrees per hour mark
-    int x = clockCenterX + sin(angle) * (clockRadius * 0.8);
-    int y = clockCenterY - cos(angle) * (clockRadius * 0.8);
-    
-    tft.fillCircle(x, y, 3, TFT_CYAN);
-  }
-  
-  // Draw hour hand
-  float hourRad = hourAngle * DEG_TO_RAD;
-  int hourX = clockCenterX + sin(hourRad) * hourHandLength;
-  int hourY = clockCenterY - cos(hourRad) * hourHandLength;
-  tft.drawLine(clockCenterX, clockCenterY, hourX, hourY, TFT_WHITE);
-  
-  // Draw minute hand
-  float minuteRad = minuteAngle * DEG_TO_RAD;
-  int minuteX = clockCenterX + sin(minuteRad) * minuteHandLength;
-  int minuteY = clockCenterY - cos(minuteRad) * minuteHandLength;
-  tft.drawLine(clockCenterX, clockCenterY, minuteX, minuteY, TFT_YELLOW);
-  
-  // Draw second hand
-  float secondRad = secondAngle * DEG_TO_RAD;
-  int secondX = clockCenterX + sin(secondRad) * secondHandLength;
-  int secondY = clockCenterY - cos(secondRad) * secondHandLength;
-  tft.drawLine(clockCenterX, clockCenterY, secondX, secondY, TFT_RED);
-  
-  // Draw center dot
-  tft.fillCircle(clockCenterX, clockCenterY, 5, TFT_CYAN);
+  greenLight();
 }
