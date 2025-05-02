@@ -49,27 +49,20 @@ void GIFDraw(GIFDRAW *pDraw) {
 
   s = pDraw->pPixels;
 
-  // Try using the exact PIP_GREEN value but in all three channels
-  // This is a "brute force" approach that should work regardless of channel swapping
-  uint16_t GREEN_ATTEMPT1 = 0x07E0;  // Standard RGB565 green
-  uint16_t GREEN_ATTEMPT2 = 0xF800;  // Red channel
-  uint16_t GREEN_ATTEMPT3 = 0x001F;  // Blue channel
-  uint16_t GREEN_ATTEMPT4 = 0x0400;  // Darker green
-
-  // Let's try GREEN_ATTEMPT2 since it previously gave blue
-  uint16_t TARGET_GREEN = GREEN_ATTEMPT3;
+  // Use blue channel bits which appears green on this display
+  uint16_t TARGET_GREEN = 0x001F;
 
   for (x = 0; x < iWidth; x++) {
     if (s[x] == pDraw->ucTransparent) {
       usTemp[x] = PIP_BLACK;  // Force transparent pixels to black
     } else {
-      usTemp[x] = TARGET_GREEN;  // Try this color for non-transparent pixels
+      usTemp[x] = usPalette[s[x]];  // Use original palette colors
     }
   }
   d = usTemp;
 
   // Position the GIF
-  tft.pushImage(pDraw->iX + figureX - 30, (y - 5) + 85, iWidth, 1, d);
+  tft.pushImage(pDraw->iX + figureX - 20, (y - 5) + 80, iWidth, 1, d);
 }
 
 void drawPipBoyInterface() {
