@@ -10,22 +10,27 @@
 #include <TFT_eSPI.h>
 #include "utils.h"
 #include <AnimatedGIF.h>
-#include <FS.h> // Include FS for File class
+#include <FS.h>  // Include FS for File class
 
 // Function prototypes
 void drawPipBoyInterface();
 void updatePipBoyTime();
-void GIFDraw(GIFDRAW *pDraw); // Forward declaration
+void GIFDraw(GIFDRAW *pDraw);  // Forward declaration
 
 // Global variables
 AnimatedGIF gif;
-const int figureX = 75; // Defined here to fix scope issue
-uint8_t *gifBuffer = NULL; // Buffer to hold GIF data
+const int figureX = 75;     // Defined here to fix scope issue
+uint8_t *gifBuffer = NULL;  // Buffer to hold GIF data
 int gifSize = 0;
 
 //////////////////////////////////////////////
 // PIP-BOY MODE FUNCTIONS
 //////////////////////////////////////////////
+
+// In pipboy.h, modify the GIFDraw function to offset the GIF to the figureX position
+
+// Modify the GIFDraw function to fix only the positioning issues
+// while preserving the original GIF colors
 
 void GIFDraw(GIFDRAW *pDraw) {
   uint8_t *s;
@@ -39,25 +44,23 @@ void GIFDraw(GIFDRAW *pDraw) {
   usPalette = pDraw->pPalette;
   y = pDraw->iY + pDraw->y;  // current line
 
-  s = pDraw->pPixels;
-  if (pDraw->ucDisposalMethod == 2) {  // restore to background color
-    for (x = 0; x < iWidth; x++) {
-      if (s[x] == pDraw->ucTransparent)
-        usTemp[x] = PIP_BLACK;
-      else
-        usTemp[x] = usPalette[s[x]];
-    }
-    d = usTemp;
-  } else {
-    for (x = 0; x < iWidth; x++) {
-      if (s[x] == pDraw->ucTransparent)
-        continue;
-      usTemp[x] = usPalette[s[x]];
-    }
-    d = usTemp;
-  }
+  // Skip the first few rows to remove extra space at the top if needed
+  if (y < 5) return;
 
-  tft.pushImage(pDraw->iX, y, iWidth, 1, d);
+  s = pDraw->pPixels;
+
+  // Always treat as disposal method 2 (restore to background color)
+  // This forces all transparent pixels to be black
+  for (x = 0; x < iWidth; x++) {
+    if (s[x] == pDraw->ucTransparent)
+      usTemp[x] = PIP_BLACK;  // Force transparent pixels to black
+    else
+      usTemp[x] = usPalette[s[x]];  // Use original GIF colors for visible pixels
+  }
+  d = usTemp;
+
+  // Position the GIF
+  tft.pushImage(pDraw->iX + figureX - 30, (y - 5) + 85, iWidth, 1, d);
 }
 
 void drawPipBoyInterface() {
@@ -86,18 +89,18 @@ void drawPipBoyInterface() {
     if (f) {
       // Get the size of the file
       gifSize = f.size();
-      
+
       // Allocate a buffer to hold the GIF data
       if (gifBuffer != NULL) {
         free(gifBuffer);
       }
       gifBuffer = (uint8_t *)malloc(gifSize);
-      
+
       if (gifBuffer != NULL) {
         // Read the file into the buffer
         f.read(gifBuffer, gifSize);
         f.close();
-        
+
         // Initialize and open the GIF
         gif.begin(GIF_PALETTE_RGB565_LE);
         if (gif.open(gifBuffer, gifSize, GIFDraw)) {
@@ -116,7 +119,7 @@ void drawPipBoyInterface() {
       }
     }
   }
-  
+
   // If GIF loading failed, draw static figure
   if (gifBuffer == NULL) {
     // Add a static Pip-Boy figure - moved slightly to the right from the far left
