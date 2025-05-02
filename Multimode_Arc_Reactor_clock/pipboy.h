@@ -15,23 +15,17 @@
 // Function prototypes
 void drawPipBoyInterface();
 void updatePipBoyTime();
-void GIFDraw(GIFDRAW *pDraw);  // Forward declaration
+void updatePipBoyGif();
+void cleanupPipBoyMode();
+void GIFDraw(GIFDRAW *pDraw);
 
 // Global variables
 AnimatedGIF gif;
-const int figureX = 75;     // Defined here to fix scope issue
+const int figureX = 75;     // Position for Vault Boy figure
 uint8_t *gifBuffer = NULL;  // Buffer to hold GIF data
 int gifSize = 0;
 
-//////////////////////////////////////////////
-// PIP-BOY MODE FUNCTIONS
-//////////////////////////////////////////////
-
-// In pipboy.h, modify the GIFDraw function to offset the GIF to the figureX position
-
-// Modify the GIFDraw function to fix only the positioning issues
-// while preserving the original GIF colors
-
+// GIF drawing function for the AnimatedGIF library
 void GIFDraw(GIFDRAW *pDraw) {
   uint8_t *s;
   uint16_t *d, *usPalette, usTemp[320];
@@ -49,9 +43,6 @@ void GIFDraw(GIFDRAW *pDraw) {
 
   s = pDraw->pPixels;
 
-  // Use blue channel bits which appears green on this display
-  uint16_t TARGET_GREEN = 0x001F;
-
   for (x = 0; x < iWidth; x++) {
     if (s[x] == pDraw->ucTransparent) {
       usTemp[x] = PIP_BLACK;  // Force transparent pixels to black
@@ -65,24 +56,24 @@ void GIFDraw(GIFDRAW *pDraw) {
   tft.pushImage(pDraw->iX + figureX - 20, (y - 5) + 80, iWidth, 1, d);
 }
 
+// Draw the initial Pip-Boy interface
 void drawPipBoyInterface() {
   // Clear the display
   tft.fillScreen(PIP_BLACK);
 
-  // Draw day of week at top - Using appropriate font size
+  // Draw day of week at top
   tft.setTextSize(2);
   tft.setTextColor(PIP_GREEN);
-  int dayWidth = dayOfWeek.length() * 12;             // Approximate width for font
-  tft.setCursor(screenCenterX - (dayWidth / 2), 25);  // Moved lower from 10 to 25
+  int dayWidth = dayOfWeek.length() * 12;
+  tft.setCursor(screenCenterX - (dayWidth / 2), 25);
   tft.println(dayOfWeek);
 
-  // Draw date with larger font as requested
-  tft.setTextSize(2);  // Increased from 1 to 2
+  // Draw date
+  tft.setTextSize(2);
   char dateStr[20];
   sprintf(dateStr, "%02d.%02d.%04d", day, month, year);
-  // Calculate width to center text
-  int dateWidth = strlen(dateStr) * 12;                // Approximate width for font size 2
-  tft.setCursor(screenCenterX - (dateWidth / 2), 50);  // Position below day of week
+  int dateWidth = strlen(dateStr) * 12;
+  tft.setCursor(screenCenterX - (dateWidth / 2), 50);
   tft.println(dateStr);
 
   // Try to load and display the GIF
@@ -124,12 +115,9 @@ void drawPipBoyInterface() {
 
   // If GIF loading failed, draw static figure
   if (gifBuffer == NULL) {
-    // Add a static Pip-Boy figure - moved slightly to the right from the far left
-    // Just simple face and body
-    // figureX is now globally defined
-
+    // Add a static Pip-Boy figure
     // Head - simple circle with face
-    tft.fillCircle(figureX, 100, 15, PIP_GREEN);  // Made slightly larger
+    tft.fillCircle(figureX, 100, 15, PIP_GREEN);
 
     // Eyes
     tft.fillCircle(figureX - 5, 97, 2, PIP_BLACK);
@@ -151,43 +139,42 @@ void drawPipBoyInterface() {
   }
 
   // Draw time with larger font size
-  tft.setTextSize(5);  // Increased size
+  tft.setTextSize(5);
   char timeStr[6];
 
-  // Lower the time display slightly
-  int timeY = 80;  // Starting Y position for hours
+  // Define time position
+  int timeY = 80;
 
   // Hours
   int displayHours = is24Hour ? hours : (hours > 12 ? hours - 12 : (hours == 0 ? 12 : hours));
   sprintf(timeStr, "%02d", displayHours);
-  tft.setCursor(120, timeY);  // Left-aligned time
+  tft.setCursor(120, timeY);
   tft.println(timeStr);
 
   // Seconds (next to hours)
   tft.setTextSize(2);
   sprintf(timeStr, "%02d", seconds);
-  tft.setCursor(195, timeY + 10);  // Right of hours
+  tft.setCursor(195, timeY + 10);
   tft.println(timeStr);
 
   // Minutes
   tft.setTextSize(5);
   sprintf(timeStr, "%02d", minutes);
-  tft.setCursor(120, timeY + 50);  // Below hours
+  tft.setCursor(120, timeY + 50);
   tft.println(timeStr);
 
   // AM/PM indicator (right of minutes)
   tft.setTextSize(2);
-  tft.setCursor(195, timeY + 60);  // Right of minutes
+  tft.setCursor(195, timeY + 60);
   tft.println(hours >= 12 ? "PM" : "AM");
 
-  // Draw PIP-BOY 3000 and ROBCO INDUSTRIES higher up on the screen
+  // Draw PIP-BOY 3000 and ROBCO INDUSTRIES
   tft.setTextSize(2);
 
   // Calculate width to center text
-  int pipBoyWidth = 11 * 12;  // "PIP-BOY 3000" is 11 chars, approx 12 pixels per char at size 2
+  int pipBoyWidth = 11 * 12;  // "PIP-BOY 3000" is 11 chars
   int robcoWidth = 8 * 12;    // "ROBCO IND" is 8 chars
 
-  // Position them higher on the screen
   tft.setCursor(screenCenterX - (pipBoyWidth / 2), 180);
   tft.println("PIP-BOY 3000");
 
@@ -195,7 +182,7 @@ void drawPipBoyInterface() {
   tft.println("ROBCO IND");
 }
 
-// Function to update the GIF animation (call this in your main loop)
+// Function to update the GIF animation (call this in the main loop)
 void updatePipBoyGif() {
   // Check if GIF exists and is loaded
   if (gifBuffer != NULL && gifSize > 0) {
@@ -213,7 +200,7 @@ void updatePipBoyTime() {
   tft.fillRect(screenCenterX - 70, 25, 140, 20, PIP_BLACK);
   tft.setTextSize(2);
   tft.setTextColor(PIP_GREEN);
-  int dayWidth = dayOfWeek.length() * 12;  // Approximate width for font size 2
+  int dayWidth = dayOfWeek.length() * 12;
   tft.setCursor(screenCenterX - (dayWidth / 2), 25);
   tft.println(dayOfWeek);
 
@@ -230,7 +217,7 @@ void updatePipBoyTime() {
   int timeY = 80;
   char timeStr[6];
 
-  // Hours - with larger font
+  // Hours
   tft.fillRect(120, timeY, 70, 40, PIP_BLACK);
   tft.setTextSize(5);
   int displayHours = is24Hour ? hours : (hours > 12 ? hours - 12 : (hours == 0 ? 12 : hours));
@@ -245,7 +232,7 @@ void updatePipBoyTime() {
   tft.setCursor(195, timeY + 10);
   tft.println(timeStr);
 
-  // Minutes - with larger font
+  // Minutes
   tft.fillRect(120, timeY + 50, 70, 40, PIP_BLACK);
   tft.setTextSize(5);
   sprintf(timeStr, "%02d", minutes);
@@ -256,7 +243,7 @@ void updatePipBoyTime() {
   tft.fillRect(195, timeY + 60, 30, 20, PIP_BLACK);
   tft.setTextSize(2);
   tft.setCursor(195, timeY + 60);
-  tft.println((is24Hour || hours < 12) ? "AM" : "PM");
+  tft.println(hours >= 12 ? "PM" : "AM");
 }
 
 // Clean up resources when switching away from Pip-Boy mode
