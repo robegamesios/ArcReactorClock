@@ -10,8 +10,8 @@
 #include <Adafruit_NeoPixel.h>
 
 // LED ring brightness settings
-int led_ring_brightness = 10;      // Normal brightness (0-255)
-int led_ring_brightness_flash = 250; // Flash brightness (0-255)
+int led_ring_brightness = 100;        // Normal brightness (0-255)
+int led_ring_brightness_flash = 250;  // Flash brightness (0-255)
 
 // LED color settings for each mode
 struct LEDColors {
@@ -22,9 +22,9 @@ struct LEDColors {
 
 // Mode colors definitions
 LEDColors modeColors[3] = {
-  {0, 20, 255},   // Blue for Arc Reactor digital
-  {0, 20, 255},   // Blue for Arc Reactor analog
-  {0, 255, 50}    // Green for Pip-Boy mode
+  { 0, 20, 255 },   // Blue for Arc Reactor digital
+  { 255, 0, 0 },  // Red for Arc Reactor analog
+  { 0, 255, 50 }    // Green for Pip-Boy mode
 };
 
 // External references
@@ -41,25 +41,24 @@ void updateLEDs();
 void greenLight() {
   pixels.setBrightness(led_ring_brightness);
   // Set all pixels to Pip-Boy green color
-  for(int i=0; i<pixels.numPixels(); i++) {
+  for (int i = 0; i < pixels.numPixels(); i++) {
     pixels.setPixelColor(i, pixels.Color(
-      modeColors[2].r, 
-      modeColors[2].g, 
-      modeColors[2].b
-    ));
+                              modeColors[2].r,
+                              modeColors[2].g,
+                              modeColors[2].b));
   }
   pixels.show();
 }
 
 void blueLight() {
   pixels.setBrightness(led_ring_brightness);
-  // Set all pixels to Arc Reactor blue color
-  for(int i=0; i<pixels.numPixels(); i++) {
+  // Set all pixels to Arc Reactor color (now Iron Man red/gold based on mode)
+  int modeIndex = (currentMode == 0) ? 0 : 1;  // Use different colors for digital vs analog
+  for (int i = 0; i < pixels.numPixels(); i++) {
     pixels.setPixelColor(i, pixels.Color(
-      modeColors[0].r, 
-      modeColors[0].g, 
-      modeColors[0].b
-    ));
+                              modeColors[modeIndex].r,
+                              modeColors[modeIndex].g,
+                              modeColors[modeIndex].b));
   }
   pixels.show();
 }
@@ -67,18 +66,18 @@ void blueLight() {
 void flashEffect() {
   pixels.setBrightness(led_ring_brightness_flash);
   // Set all pixels to white
-  for(int i=0; i<pixels.numPixels(); i++) {
+  for (int i = 0; i < pixels.numPixels(); i++) {
     pixels.setPixelColor(i, pixels.Color(250, 250, 250));
   }
   pixels.show();
-  
+
   // Fade down brightness
-  for (int i=led_ring_brightness_flash; i>10; i--) {
+  for (int i = led_ring_brightness_flash; i > 10; i--) {
     pixels.setBrightness(i);
     pixels.show();
-    delay(7);
+    delay(8);
   }
-  
+
   // Return to appropriate color for current mode
   updateLEDs();
 }
@@ -86,15 +85,15 @@ void flashEffect() {
 void updateLEDs() {
   // Set colors based on current mode
   switch (currentMode) {
-    case 0: // MODE_ARC_DIGITAL
-    case 1: // MODE_ARC_ANALOG
+    case 0:  // MODE_ARC_DIGITAL
+    case 1:  // MODE_ARC_ANALOG
       blueLight();
       break;
-      
-    case 2: // MODE_PIPBOY
+
+    case 2:  // MODE_PIPBOY
       greenLight();
       break;
   }
 }
 
-#endif // LED_CONTROLS_H
+#endif  // LED_CONTROLS_H

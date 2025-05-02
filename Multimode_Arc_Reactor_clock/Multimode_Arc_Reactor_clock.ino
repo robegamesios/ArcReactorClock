@@ -221,7 +221,7 @@ void loop() {
   }
 
   // LED ring effect every minute (when seconds = 0)
-  if (seconds == 0 && (currentMillis - lastTimeCheck < 1000)) {
+  if (seconds == 0 && (minutes == 0 || minutes == 30) && (currentMillis - lastTimeCheck < 1000)) {
     flashEffect();
   } else {
     // Only update LEDs if needed to avoid SPI conflicts
