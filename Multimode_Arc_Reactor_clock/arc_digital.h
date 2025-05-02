@@ -1,6 +1,7 @@
 /*
  * arc_digital.h - Arc Reactor Digital Clock Mode
  * For Multi-Mode Digital Clock project
+ * Updated with Iron Man color scheme
  */
 
 #ifndef ARC_DIGITAL_H
@@ -16,6 +17,11 @@ bool prevColonState = false;                           // Track previous colon s
 bool showColon = true;                                 // For blinking colon
 uint16_t bgColor = 0x000A;                             // Very dark blue background color
 
+// Iron Man color scheme
+#define IRONMAN_RED 0xF800    // Bright red for the solid ring
+#define IRONMAN_GOLD 0xFD20   // Gold color for the outer circle
+#define IRONMAN_CYAN 0x07FF   // Keep the cyan for the text elements
+
 // Function prototypes
 void drawArcReactorBackground();
 void updateDigitalTime();
@@ -27,21 +33,21 @@ void drawArcReactorBackground() {
   // Clear the display
   tft.fillScreen(TFT_BLACK);
   
-  // Draw outer circle of Arc Reactor
-  tft.drawCircle(screenCenterX, screenCenterY, screenRadius, TFT_BLUE);
-  tft.drawCircle(screenCenterX, screenCenterY, screenRadius - 1, TFT_BLUE);
+  // Draw outer circle of Arc Reactor - now gold
+  tft.drawCircle(screenCenterX, screenCenterY, screenRadius, IRONMAN_GOLD);
+  tft.drawCircle(screenCenterX, screenCenterY, screenRadius - 1, IRONMAN_GOLD);
   
-  // Draw inner circle of Arc Reactor with dark blue background
-  tft.fillCircle(screenCenterX, screenCenterY, screenRadius * 0.85, TFT_NAVY);
-  tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.85, TFT_CYAN);
+  // Draw inner circle of Arc Reactor with red background (formerly navy)
+  tft.fillCircle(screenCenterX, screenCenterY, screenRadius * 0.85, IRONMAN_RED);
+  tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.85, IRONMAN_CYAN);
     
-  // Draw inner glowing center of Arc Reactor (slightly darker navy blue)
+  // Draw inner glowing center of Arc Reactor (keep dark blue for contrast)
   tft.fillCircle(screenCenterX, screenCenterY, screenRadius * 0.65, bgColor); // Very dark blue
-  tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.65, TFT_CYAN);
+  tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.65, IRONMAN_CYAN);
   
   // Draw decorative circles for Arc Reactor effect
-  tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.55, TFT_BLUE);
-  tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.45, TFT_BLUE);
+  tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.55, IRONMAN_GOLD);
+  tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.45, IRONMAN_GOLD);
 }
 
 // Reset variables to force redraw of digital clock
@@ -70,7 +76,7 @@ void updateDigitalTime() {
       // Clear and redraw seconds area at the top of the display
       tft.fillRect(screenCenterX - 15, screenCenterY - 50, 40, 20, bgColor);
       tft.setTextSize(2);
-      tft.setTextColor(TFT_CYAN);
+      tft.setTextColor(IRONMAN_CYAN);
       tft.setCursor(screenCenterX - 10, screenCenterY - 50);
       tft.print(timeStr);
     }
@@ -89,7 +95,7 @@ void updateDigitalTime() {
       // Clear and redraw hours area only if it changed
       tft.fillRect(screenCenterX - 63, screenCenterY - 25, 65, 45, bgColor);
       tft.setTextSize(4);
-      tft.setTextColor(TFT_CYAN);
+      tft.setTextColor(IRONMAN_CYAN);
       tft.setCursor(screenCenterX - 58, screenCenterY - 20);
       tft.print(timeStr);
     }
@@ -99,7 +105,7 @@ void updateDigitalTime() {
       tft.fillRect(screenCenterX - 15, screenCenterY - 25, 25, 45, bgColor);
       if (showColon) {
         tft.setTextSize(4);
-        tft.setTextColor(TFT_CYAN);
+        tft.setTextColor(IRONMAN_CYAN);
         tft.setCursor(screenCenterX - 10, screenCenterY - 20);
         tft.print(":");
       }
@@ -118,7 +124,7 @@ void updateDigitalTime() {
       // Clear and redraw minutes area only if it changed
       tft.fillRect(screenCenterX + 10, screenCenterY - 25, 50, 45, bgColor);
       tft.setTextSize(4);
-      tft.setTextColor(TFT_CYAN);
+      tft.setTextColor(IRONMAN_CYAN);
       tft.setCursor(screenCenterX + 10, screenCenterY - 20);
       tft.print(timeStr);
     }
@@ -138,7 +144,7 @@ void updateDigitalTime() {
       // Position for AM/PM indicator
       tft.fillRect(screenCenterX - 15, screenCenterY + 35, 40, 20, bgColor);
       tft.setTextSize(2);
-      tft.setTextColor(TFT_CYAN);
+      tft.setTextColor(IRONMAN_CYAN);
       if (isPM) {
         tft.setCursor(screenCenterX - 10, screenCenterY + 35);
         tft.println("PM");
@@ -168,7 +174,7 @@ void updateArcDigitalColon() {
     tft.fillRect(screenCenterX - 15, screenCenterY - 25, 25, 45, bgColor);
     if (showColon) {
       tft.setTextSize(4);
-      tft.setTextColor(TFT_CYAN);
+      tft.setTextColor(IRONMAN_CYAN);
       tft.setCursor(screenCenterX - 10, screenCenterY - 20);
       tft.print(":");
     }
