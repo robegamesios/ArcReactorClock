@@ -17,7 +17,6 @@
 int prevHours = -1, prevMinutes = -1, prevSeconds = -1; // Track previous time values
 bool prevColonState = false;                           // Track previous colon state
 bool showColon = true;                                 // For blinking colon
-uint16_t bgColor = 0x000A;                             // Very dark blue background color - KEEP THIS FOR ANALOG CLOCK
 
 // Iron Man color scheme
 #define IRONMAN_RED 0xF800    // Bright red for the solid ring
@@ -78,7 +77,7 @@ void drawArcReactorBackground() {
   // Try to load JPEG background from SPIFFS
   if (!displayJPEGBackground("/ironman00.jpg")) {
     // Fallback to drawing if JPEG loading fails
-    Serial.println("Falling back to drawn background");
+    Serial.println("No jpeg background found");
   }
 }
 
