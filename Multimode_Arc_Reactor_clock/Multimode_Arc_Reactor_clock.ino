@@ -1,8 +1,8 @@
 /*
- * Combined Digital Clock with Multiple Themes
+ * Combined Digital Clock with Multiple Themes and JPEG Support
  * Includes:
- * 1. Arc Reactor Digital Mode (blue)
- * 2. Arc Reactor Analog Mode (blue)
+ * 1. Arc Reactor Digital Mode (blue) with JPEG background
+ * 2. Arc Reactor Analog Mode (blue) with JPEG background
  * 3. Pip-Boy 3000 Mode (green)
  * Button press cycles through the clock faces
  */
@@ -13,6 +13,9 @@
 #include <WiFi.h>
 #include <time.h>
 #include <SPIFFS.h>  // For file system access
+
+// Include TJpgDec library for JPEG decoding
+#include <TJpg_Decoder.h>
 
 // Include custom header files for different clock modes
 #include "utils.h"
@@ -41,8 +44,8 @@ Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 TFT_eSPI tft = TFT_eSPI();
 
 // WiFi settings - enter your credentials here
-const char* ssid = "SSID";  // Enter your WiFi network name
-const char* password = "PASSWORD";        // Enter your WiFi password
+const char* ssid = "ASUS-RT-AX56U-2.4G";  // Enter your WiFi network name
+const char* password = "tocino25";        // Enter your WiFi password
 
 // Time settings
 const char* ntpServer = "pool.ntp.org";
@@ -69,12 +72,19 @@ unsigned long lastColonBlink = 0;
 unsigned long lastButtonPress = 0;
 unsigned long debounceDelay = 300;  // Debounce time in milliseconds
 
+// Function declarations
 void cleanupPipBoyMode();
 void updatePipBoyGif();
+void checkForImageFiles();
+bool loadImageList();
+
+// Array to store available image filenames 
+String arcReactorImages[5]; // Up to 5 different Arc Reactor backgrounds
+int numArcImages = 0;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\nStarting Multi-Mode Digital Clock");
+  Serial.println("\nStarting Multi-Mode Digital Clock with JPEG Support");
 
   // Configure button
   pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -121,12 +131,19 @@ void setup() {
   Serial.print("x");
   Serial.println(tft.height());
 
-  // Initialize SPIFFS for possible future use
+  // Initialize SPIFFS for image storage
   if (!SPIFFS.begin(true)) {
     Serial.println("SPIFFS Mount Failed");
   } else {
     Serial.println("SPIFFS Mounted");
+    // List files in SPIFFS for debugging
+    listSPIFFSFiles();
   }
+
+  // Initialize TJpg_Decoder
+  TJpgDec.setJpgScale(1);       // Set the jpeg scale (1, 2, 4, or 8)
+  TJpgDec.setSwapBytes(true);   // Set byte swap option if needed for your display
+  TJpgDec.setCallback(tft_output); // Set the callback function for rendering
 
   // Connect to WiFi
   Serial.print("Connecting to WiFi");
@@ -175,6 +192,23 @@ void setup() {
 
   // Draw initial interface based on current mode
   switchMode(currentMode);
+}
+
+// Helper function to list files in SPIFFS
+void listSPIFFSFiles() {
+  File root = SPIFFS.open("/");
+  File file = root.openNextFile();
+  
+  Serial.println("Files in SPIFFS:");
+  while (file) {
+    Serial.print("  ");
+    Serial.print(file.name());
+    Serial.print(" (");
+    Serial.print(file.size());
+    Serial.println(" bytes)");
+    file = root.openNextFile();
+  }
+  Serial.println("----------------------");
 }
 
 void loop() {
@@ -233,6 +267,75 @@ void loop() {
   }
 }
 
+// Function to check for available image files in SPIFFS
+void checkForImageFiles() {
+  File root = SPIFFS.open("/");
+  File file = root.openNextFile();
+  
+  numArcImages = 0; // Reset counter
+  
+  while(file && numArcImages < 5) {
+    String fileName = file.name();
+    
+    // Check if this is a JPEG for Arc Reactor mode
+    if (fileName.endsWith(".jpg") && fileName.indexOf("arc_reactor") >= 0) {
+      arcReactorImages[numArcImages] = fileName;
+      numArcImages++;
+      Serial.print("Found Arc Reactor image: ");
+      Serial.println(fileName);
+    }
+    
+    file = root.openNextFile();
+  }
+  
+  if (numArcImages == 0) {
+    Serial.println("No Arc Reactor JPEG images found in SPIFFS");
+  } else {
+    Serial.print("Found ");
+    Serial.print(numArcImages);
+    Serial.println(" Arc Reactor images");
+  }
+}
+
+// Function to display a JPEG image from SPIFFS
+bool displayJPEG(const char* filename) {
+  if (SPIFFS.exists(filename)) {
+    Serial.print("Displaying JPEG: ");
+    Serial.println(filename);
+    
+    File jpegFile = SPIFFS.open(filename, "r");
+    if (!jpegFile) {
+      Serial.println("Failed to open JPEG file");
+      return false;
+    }
+    
+    // Get file size
+    size_t fileSize = jpegFile.size();
+    
+    // Use the TJpgDec library to decode and display the JPEG
+    uint8_t* jpegBuffer = (uint8_t*)malloc(fileSize);
+    if (!jpegBuffer) {
+      Serial.println("Failed to allocate memory for JPEG");
+      jpegFile.close();
+      return false;
+    }
+    
+    jpegFile.read(jpegBuffer, fileSize);
+    jpegFile.close();
+    
+    // Decode and render the JPEG
+    TJpgDec.drawJpg(0, 0, jpegBuffer, fileSize);
+    
+    // Free the buffer
+    free(jpegBuffer);
+    return true;
+  } else {
+    Serial.print("JPEG file not found: ");
+    Serial.println(filename);
+    return false;
+  }
+}
+
 void checkButtonPress() {
   // Check if button is pressed (will be LOW because of INPUT_PULLUP)
   if (digitalRead(BUTTON_PIN) == LOW) {
@@ -266,16 +369,29 @@ void switchMode(int mode) {
   // Draw appropriate interface based on mode
   switch (mode) {
     case MODE_ARC_DIGITAL:
-      // Arc Reactor digital interface
-      drawArcReactorBackground();
+      // Arc Reactor digital interface with JPEG background
+      if (numArcImages > 0) {
+        // Choose the first available Arc Reactor image
+        displayJPEG(arcReactorImages[0].c_str());
+      } else {
+        // Fallback to drawing if no images available
+        drawArcReactorBackground();
+      }
       // Reset previous values to force redraw
       resetArcDigitalVariables();
       updateDigitalTime();
       break;
 
     case MODE_ARC_ANALOG:
-      // Arc Reactor analog interface
-      drawArcReactorBackground();
+      // Arc Reactor analog interface with JPEG background
+      if (numArcImages > 0) {
+        // Use the same or different image (for variety)
+        int imageIndex = (numArcImages > 1) ? 1 : 0; 
+        displayJPEG(arcReactorImages[imageIndex].c_str());
+      } else {
+        // Fallback to drawing if no images available
+        drawArcReactorBackground();
+      }
       drawAnalogClock();
       break;
 
