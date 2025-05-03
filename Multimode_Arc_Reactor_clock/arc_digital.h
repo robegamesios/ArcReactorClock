@@ -10,27 +10,26 @@
 #include <TFT_eSPI.h>
 #include <SPIFFS.h>
 #include <FS.h>
-#include <TJpg_Decoder.h>  // Make sure to include TJpg_Decoder
+#include <TJpg_Decoder.h>
 #include "utils.h"
 
 // For Arc Reactor digital mode
 int prevHours = -1, prevMinutes = -1, prevSeconds = -1; // Track previous time values
 bool prevColonState = false;                           // Track previous colon state
 bool showColon = true;                                 // For blinking colon
-uint16_t bgColor = 0x000A;                             // Very dark blue background color
+uint16_t bgColor = 0x000A;                             // Very dark blue background color - KEEP THIS FOR ANALOG CLOCK
 
 // Iron Man color scheme
 #define IRONMAN_RED 0xF800    // Bright red for the solid ring
 #define IRONMAN_GOLD 0xFD20   // Gold color for the outer circle
 #define IRONMAN_CYAN 0x07FF   // Keep the cyan for the text elements
 
+// Semi-transparent overlay - a very dark overlay that will still show JPEG details
+#define TEXT_BACKGROUND_COLOR 0x0001  // Nearly black but not solid
+
 // Callback function for the TJpg_Decoder
 bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap)
 {
-  // Stop further decoding as image is running off bottom of screen
-  if (y >= tft.height())
-    return 0;
-  
   // This function will clip the image block rendering automatically at the TFT boundaries
   tft.pushImage(x, y, w, h, bitmap);
   
@@ -64,9 +63,6 @@ bool displayJPEGBackground(const char* filename) {
     return false;
   }
   
-  // Get file size
-  size_t fileSize = jpegFile.size();
-  
   // Use TJpg_Decoder to decode and display the JPEG
   bool decoded = TJpgDec.drawFsJpg(0, 0, filename);
   jpegFile.close();
@@ -83,22 +79,6 @@ void drawArcReactorBackground() {
   if (!displayJPEGBackground("/ironman00.jpg")) {
     // Fallback to drawing if JPEG loading fails
     Serial.println("Falling back to drawn background");
-    
-    // Draw outer circle of Arc Reactor - now gold
-    // tft.drawCircle(screenCenterX, screenCenterY, screenRadius, IRONMAN_GOLD);
-    // tft.drawCircle(screenCenterX, screenCenterY, screenRadius - 1, IRONMAN_GOLD);
-    
-    // // Draw inner circle of Arc Reactor with red background (formerly navy)
-    // tft.fillCircle(screenCenterX, screenCenterY, screenRadius * 0.85, IRONMAN_RED);
-    // tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.85, IRONMAN_CYAN);
-      
-    // // Draw inner glowing center of Arc Reactor (keep dark blue for contrast)
-    // tft.fillCircle(screenCenterX, screenCenterY, screenRadius * 0.65, bgColor); // Very dark blue
-    // tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.65, IRONMAN_CYAN);
-    
-    // // Draw decorative circles for Arc Reactor effect
-    // tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.55, IRONMAN_GOLD);
-    // tft.drawCircle(screenCenterX, screenCenterY, screenRadius * 0.45, IRONMAN_GOLD);
   }
 }
 
@@ -115,8 +95,18 @@ void resetArcDigitalVariables() {
 void updateDigitalTime() {
   // Only update the display if the time or colon state has changed
   if (hours != prevHours || minutes != prevMinutes || seconds != prevSeconds || showColon != prevColonState) {
+    
+    // Create backgrounds for text that preserve most of the underlying image
+    tft.setTextColor(IRONMAN_CYAN, TEXT_BACKGROUND_COLOR);
+    
     // Handle seconds update - at the top for symmetry
     if (seconds != prevSeconds) {
+      // Position for seconds
+      int secondsX = screenCenterX - 15;
+      int secondsY = screenCenterY - 50;
+      int secondsWidth = 40;
+      int secondsHeight = 20;
+      
       // Format seconds with leading zero if needed 
       char timeStr[6];
       if (seconds < 10) {
@@ -125,10 +115,8 @@ void updateDigitalTime() {
         sprintf(timeStr, "%d", seconds);
       }
       
-      // Create semi-transparent background for text visibility
-      tft.fillRect(screenCenterX - 15, screenCenterY - 50, 40, 20, bgColor);
+      // Draw text with semi-transparent background
       tft.setTextSize(2);
-      tft.setTextColor(IRONMAN_CYAN);
       tft.setCursor(screenCenterX - 10, screenCenterY - 50);
       tft.print(timeStr);
     }
@@ -144,22 +132,28 @@ void updateDigitalTime() {
         sprintf(timeStr, "%d", displayHours);
       }
       
-      // Clear and redraw hours area only if it changed
-      tft.fillRect(screenCenterX - 63, screenCenterY - 25, 65, 45, bgColor);
+      // Draw hours text with semi-transparent background
       tft.setTextSize(4);
-      tft.setTextColor(IRONMAN_CYAN);
       tft.setCursor(screenCenterX - 58, screenCenterY - 20);
       tft.print(timeStr);
     }
     
     // Handle colon update (only if colon state changed)
     if (showColon != prevColonState) {
-      tft.fillRect(screenCenterX - 15, screenCenterY - 25, 25, 45, bgColor);
+      // Colon position
+      int colonX = screenCenterX - 15;
+      int colonY = screenCenterY - 25;
+      int colonWidth = 25;
+      int colonHeight = 45;
+      
+      // Either draw the colon or clear its area by redrawing background
       if (showColon) {
         tft.setTextSize(4);
-        tft.setTextColor(IRONMAN_CYAN);
         tft.setCursor(screenCenterX - 10, screenCenterY - 20);
         tft.print(":");
+      } else {
+        // When colon needs to be hidden, draw a small rect with the background color
+        tft.fillRect(colonX, colonY, colonWidth, colonHeight, TEXT_BACKGROUND_COLOR);
       }
     }
     
@@ -173,10 +167,8 @@ void updateDigitalTime() {
         sprintf(timeStr, "%d", minutes);
       }
       
-      // Clear and redraw minutes area only if it changed
-      tft.fillRect(screenCenterX + 10, screenCenterY - 25, 50, 45, bgColor);
+      // Draw minutes text with semi-transparent background
       tft.setTextSize(4);
-      tft.setTextColor(IRONMAN_CYAN);
       tft.setCursor(screenCenterX + 10, screenCenterY - 20);
       tft.print(timeStr);
     }
@@ -193,15 +185,12 @@ void updateDigitalTime() {
         isPM = (hours >= 12);
       }
       
-      // Position for AM/PM indicator
-      tft.fillRect(screenCenterX - 15, screenCenterY + 35, 40, 20, bgColor);
+      // Draw AM/PM indicator with semi-transparent background
       tft.setTextSize(2);
-      tft.setTextColor(IRONMAN_CYAN);
+      tft.setCursor(screenCenterX - 10, screenCenterY + 35);
       if (isPM) {
-        tft.setCursor(screenCenterX - 10, screenCenterY + 35);
         tft.println("PM");
       } else {
-        tft.setCursor(screenCenterX - 10, screenCenterY + 35);
         tft.println("AM");
       }
     }
@@ -222,13 +211,21 @@ void updateArcDigitalColon() {
   
   // Only call update if colon state changed
   if (oldColonState != showColon) {
-    // Update only the colon part, not the entire time display
-    tft.fillRect(screenCenterX - 15, screenCenterY - 25, 25, 45, bgColor);
+    // Position for colon
+    int colonX = screenCenterX - 15;
+    int colonY = screenCenterY - 25;
+    int colonWidth = 25;
+    int colonHeight = 45;
+    
     if (showColon) {
+      // Draw colon with semi-transparent background
+      tft.setTextColor(IRONMAN_CYAN, TEXT_BACKGROUND_COLOR);
       tft.setTextSize(4);
-      tft.setTextColor(IRONMAN_CYAN);
       tft.setCursor(screenCenterX - 10, screenCenterY - 20);
       tft.print(":");
+    } else {
+      // Clear the colon with background color
+      tft.fillRect(colonX, colonY, colonWidth, colonHeight, TEXT_BACKGROUND_COLOR);
     }
     
     // Update the state tracking
