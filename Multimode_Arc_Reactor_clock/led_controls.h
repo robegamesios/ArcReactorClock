@@ -1,6 +1,8 @@
 /*
  * led_controls.h - Functions for controlling the LED ring
  * For Multi-Mode Digital Clock project
+ * 
+ * REVISED VERSION - Allows custom LED colors for all modes
  */
 
 #ifndef LED_CONTROLS_H
@@ -15,39 +17,26 @@
 // External references
 extern Adafruit_NeoPixel pixels;
 extern int currentMode;
+extern bool needClockRefresh;
 
 // LED ring brightness settings
 extern int led_ring_brightness;
 extern int led_ring_brightness_flash;
 
 // Function declarations for LED control
-void greenLight();
-void blueLight();
-void flashEffect();
 void updateLEDs();
+void flashEffect();
 
-// LED ring functions
-void greenLight() {
+// Update LED ring based on current settings
+void updateLEDs() {
   pixels.setBrightness(led_ring_brightness);
-  // Set all pixels to Pip-Boy green color
+
+  // Use the user-selected color for all modes
   for (int i = 0; i < pixels.numPixels(); i++) {
     pixels.setPixelColor(i, pixels.Color(
-                              modeColors[2].r,
-                              modeColors[2].g,
-                              modeColors[2].b));
-  }
-  pixels.show();
-}
-
-void blueLight() {
-  pixels.setBrightness(led_ring_brightness);
-  // Use the current mode's color
-  int modeIndex = (currentMode == 0) ? 0 : 1;  // Use different colors for digital vs analog
-  for (int i = 0; i < pixels.numPixels(); i++) {
-    pixels.setPixelColor(i, pixels.Color(
-                              modeColors[modeIndex].r,
-                              modeColors[modeIndex].g,
-                              modeColors[modeIndex].b));
+                              ledColors[currentLedColor].r,
+                              ledColors[currentLedColor].g,
+                              ledColors[currentLedColor].b));
   }
   pixels.show();
 }
@@ -69,20 +58,6 @@ void flashEffect() {
 
   // Return to appropriate color for current mode
   updateLEDs();
-}
-
-void updateLEDs() {
-  // Set colors based on current mode
-  switch (currentMode) {
-    case 0:  // MODE_ARC_DIGITAL
-    case 1:  // MODE_ARC_ANALOG
-      blueLight();
-      break;
-
-    case 2:  // MODE_PIPBOY
-      greenLight();
-      break;
-  }
 }
 
 #endif  // LED_CONTROLS_H

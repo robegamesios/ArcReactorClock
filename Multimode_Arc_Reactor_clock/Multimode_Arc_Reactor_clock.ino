@@ -1,10 +1,13 @@
 /*
- * Combined Digital Clock with Multiple Themes and JPEG Support
- * Includes:
- * 1. Arc Reactor Digital Mode with JPEG background
- * 2. Arc Reactor Analog Mode with JPEG background 
+ * Combined Digital Clock with Multiple Display Modes and Controls
+ * Features:
+ * 1. Digital Clock Mode with JPEG background
+ * 2. Analog Clock Mode with JPEG background 
  * 3. Pip-Boy 3000 Mode (green)
- * Button press cycles through the clock faces
+ * Three control buttons:
+ * - Button 1 (GPIO 22): Cycle through backgrounds
+ * - Button 2 (GPIO 27): Adjust vertical position
+ * - Button 3 (GPIO 25): Change LED color
  */
 
 #include <SPI.h>
@@ -14,28 +17,46 @@
 #include <time.h>
 #include <SPIFFS.h>
 #include <TJpg_Decoder.h>
-
-// Include the unified theme manager first (replaces led_controls.h and theme_persistence.h)
-#include "theme_manager.h"
-
-// Include custom header files for different clock modes
-#include "utils.h"
-#include "arc_digital.h"
-#include "arc_analog.h"
-#include "pipboy.h"
+#include "simple_storage.h"
 
 // Hardware pins
-#define LED_PIN 21     // NeoPixel LED ring pin
-#define NUMPIXELS 35   // Number of LEDs in the ring
-#define BUTTON_PIN 22  // Button pin for mode switching
+#define LED_PIN 21         // NeoPixel LED ring pin
+#define NUMPIXELS 35       // Number of LEDs in the ring
+#define BG_BUTTON_PIN 22   // Button pin for background cycling
+#define POS_BUTTON_PIN 27  // Button pin for vertical position
+#define CLR_BUTTON_PIN 25  // Button pin for LED color cycling
 
-// LED ring brightness settings (moved from led_controls.h)
+// LED ring brightness settings
 int led_ring_brightness = 100;        // Normal brightness (0-255)
 int led_ring_brightness_flash = 250;  // Flash brightness (0-255)
+
+// Clock display modes
+#define MODE_ARC_DIGITAL 0
+#define MODE_ARC_ANALOG 1
+#define MODE_PIPBOY 2
+#define MODE_TOTAL 3
+
+// Current mode variable
+int currentMode = MODE_ARC_DIGITAL;  // Start with Arc Reactor digital mode
 
 // Initialize hardware
 Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 TFT_eSPI tft = TFT_eSPI();
+
+// Vertical position settings
+#define POS_TOP -80
+#define POS_CENTER 0
+#define POS_BOTTOM 80
+#define POS_HIDDEN 999  // Special value to hide the clock
+
+// For now, include these header files later after defining variables
+// they need access to
+#include "utils.h"
+#include "theme_manager.h"
+#include "led_controls.h"
+#include "arc_digital.h"
+#include "arc_analog.h"
+#include "pipboy.h"
 
 // WiFi settings - enter your credentials here
 const char* ssid = "SSID";          // Enter your WiFi network name
@@ -58,22 +79,34 @@ String dayOfWeek = "WEDNESDAY";
 bool is24Hour = false;  // Use 12-hour format by default
 bool needClockRefresh = false;
 
-// Mode and timing variables
-int currentMode = MODE_ARC_DIGITAL;  // Start with Arc Reactor digital mode
+// Settings variables
+int currentBgIndex = 0;           // Current background index
+int currentVertPos = POS_CENTER;  // Current vertical position
+bool isClockHidden = false;       // Clock visibility flag
+
+// Button timing variables
 unsigned long lastTimeCheck = 0;
 unsigned long lastColonBlink = 0;
-unsigned long lastButtonPress = 0;
+unsigned long lastBgButtonPress = 0;
+unsigned long lastPosButtonPress = 0;
+unsigned long lastClrButtonPress = 0;
 unsigned long debounceDelay = 300;  // Debounce time in milliseconds
 
 // Array to store available image filenames
-String arcReactorImages[5];  // Up to 5 different Arc Reactor backgrounds
-int numArcImages = 0;
+String backgroundImages[10];  // Up to 10 different background images
+int numBgImages = 0;
 
 // Function declarations
 void checkForImageFiles();
-void switchMode(int mode);
+void cycleBgImage();
+void cycleVerticalPosition();
 void checkButtonPress();
+void drawBackground();
+void updateClockDisplay();
+void saveSettings();
+void loadSettings();
 void listSPIFFSFiles();
+void switchMode(int mode);
 
 // Helper function to list files in SPIFFS
 void listSPIFFSFiles() {
@@ -92,51 +125,32 @@ void listSPIFFSFiles() {
   Serial.println("----------------------");
 }
 
-// Check for image files in SPIFFS
+// Check for image files in SPIFFS and index them
 void checkForImageFiles() {
   File root = SPIFFS.open("/");
   File file = root.openNextFile();
 
-  numArcImages = 0;  // Reset counter
+  numBgImages = 0;  // Reset counter
 
   Serial.println("\n----- Available Background Images -----");
 
-  while (file && numArcImages < 5) {
+  while (file && numBgImages < 10) {
     String fileName = file.name();
 
     if (!fileName.startsWith("/")) {
       fileName = "/" + fileName;
     }
 
-    // Check if this is a JPEG file
-    if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
-      arcReactorImages[numArcImages] = fileName;
+    // Check if this is a JPEG file or GIF file
+    if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") || fileName.endsWith(".gif")) {
+      backgroundImages[numBgImages] = fileName;
 
-      // Extract filename for display and theme detection
-      String justName = fileName;
-      int lastSlash = fileName.lastIndexOf('/');
-      if (lastSlash >= 0 && lastSlash < fileName.length() - 1) {
-        justName = fileName.substring(lastSlash + 1);
-      }
-      justName.toLowerCase();
-
-      // Determine theme
-      String theme = "Default";
-      if (justName.startsWith(THEME_IRONMAN)) theme = "Iron Man (Blue/Red)";
-      else if (justName.startsWith(THEME_HULK)) theme = "Hulk (Green)";
-      else if (justName.startsWith(THEME_CAPTAIN)) theme = "Captain America (Blue/Red)";
-      else if (justName.startsWith(THEME_THOR)) theme = "Thor (Cyan/Yellow)";
-      else if (justName.startsWith(THEME_BLACK_WIDOW)) theme = "Black Widow (Red)";
-      else if (justName.startsWith(THEME_SPIDERMAN)) theme = "Spiderman (Red)";
-
-      // Log file with theme
-      Serial.print(numArcImages + 1);
+      // Log the file info
+      Serial.print(numBgImages);
       Serial.print(": ");
-      Serial.print(fileName);
-      Serial.print(" - Theme: ");
-      Serial.println(theme);
+      Serial.println(fileName);
 
-      numArcImages++;
+      numBgImages++;
     }
 
     file = root.openNextFile();
@@ -144,38 +158,44 @@ void checkForImageFiles() {
 
   Serial.println("---------------------------------------");
 
-  if (numArcImages == 0) {
-    Serial.println("No JPEG images found in SPIFFS");
+  if (numBgImages == 0) {
+    Serial.println("No background images found in SPIFFS");
   } else {
     Serial.print("Found ");
-    Serial.print(numArcImages);
+    Serial.print(numBgImages);
     Serial.println(" background images");
   }
 }
 
-// Check for button press to switch modes
-void checkButtonPress() {
-  // Check if button is pressed (will be LOW because of INPUT_PULLUP)
-  if (digitalRead(BUTTON_PIN) == LOW) {
-    // Debounce
-    if (millis() - lastButtonPress > debounceDelay) {
-      // Change mode
-      currentMode = (currentMode + 1) % MODE_TOTAL;
-      Serial.print("Switching to mode: ");
-      Serial.println(currentMode);
+// Function to prioritize Iron Man image
+void prioritizeIronManBackground() {
+  // Skip if no images
+  if (numBgImages <= 1) return;
 
-      // Switch to the new mode
-      switchMode(currentMode);
+  // Search for Iron Man image and move it to index 0
+  for (int i = 0; i < numBgImages; i++) {
+    String lowerName = backgroundImages[i];
+    lowerName.toLowerCase();
 
-      // Flash LEDs to indicate mode change
-      flashEffect();
+    // Check if this is an Iron Man image
+    if (lowerName.indexOf("00_ironman") >= 0) {
+      // If it's not already at position 0, swap it
+      if (i > 0) {
+        String temp = backgroundImages[0];
+        backgroundImages[0] = backgroundImages[i];
+        backgroundImages[i] = temp;
 
-      lastButtonPress = millis();
+        Serial.println("Iron Man background moved to first position");
+      }
+      break;
     }
   }
+
+  // Ensure currentBgIndex is 0 for initial display
+  currentBgIndex = 0;
 }
 
-// Switch to a different clock mode
+// Switch to a different clock mode - modified for button control
 void switchMode(int mode) {
   // Store old mode
   int oldMode = currentMode;
@@ -186,80 +206,334 @@ void switchMode(int mode) {
   }
 
   // Clear screen
-  tft.fillScreen(PIP_BLACK);
+  tft.fillScreen(TFT_BLACK);
 
   // Update current mode
   currentMode = mode;
 
   // Draw appropriate interface based on mode
-  switch (mode) {
-    case MODE_ARC_DIGITAL:
-      // Arc Reactor digital interface with JPEG background
-      if (numArcImages > 0) {
-        // Choose the first available Arc Reactor image
-        displayJPEGBackground(arcReactorImages[0].c_str());
+  drawBackground();
+
+  if (!isClockHidden) {
+    updateClockDisplay();
+  }
+
+  // Update LEDs
+  updateLEDs();
+}
+
+// Handle background image button press
+void cycleBgImage() {
+  if (numBgImages <= 0) return;
+
+  // Increment the background index
+  currentBgIndex = (currentBgIndex + 1) % numBgImages;
+
+  // Get the file extension for the selected background
+  String bgFile = backgroundImages[currentBgIndex];
+
+  // Determine the appropriate mode based on extension
+  if (bgFile.endsWith(".gif")) {
+    // Switch to Pip-Boy mode for any GIF file
+    currentMode = MODE_PIPBOY;
+  } else if (currentMode == MODE_PIPBOY) {
+    // Coming from Pip-Boy mode, switch to digital
+    currentMode = MODE_ARC_DIGITAL;
+  }
+
+  // Update the display with the new background
+  switchMode(currentMode);
+
+  // Save settings
+  saveSettings();
+}
+
+// Handle vertical position button press
+void cycleVerticalPosition() {
+  // Check the current mode first
+  if (currentMode == MODE_PIPBOY) {
+    // For Pip-Boy mode, just cycle vertical positions without changing mode
+    if (currentVertPos == POS_TOP) {
+      currentVertPos = POS_CENTER;
+    } else if (currentVertPos == POS_CENTER) {
+      currentVertPos = POS_BOTTOM;
+    } else if (currentVertPos == POS_BOTTOM) {
+      currentVertPos = POS_HIDDEN;
+      isClockHidden = true;
+    } else {
+      currentVertPos = POS_TOP;
+      isClockHidden = false;
+    }
+  } else {
+    // For both digital and analog modes, use this sequence:
+    // Digital -80 -> Digital 0 -> Digital 80 -> Digital hidden ->
+    // Analog visible -> Digital -80 (repeat)
+
+    if (currentMode == MODE_ARC_DIGITAL) {
+      // We're in digital mode
+      if (currentVertPos == POS_TOP) {
+        // Move to center position (still digital)
+        currentVertPos = POS_CENTER;
+      } else if (currentVertPos == POS_CENTER) {
+        // Move to bottom position (still digital)
+        currentVertPos = POS_BOTTOM;
+      } else if (currentVertPos == POS_BOTTOM) {
+        // Hide the clock (still digital)
+        currentVertPos = POS_HIDDEN;
+        isClockHidden = true;
       } else {
-        // Fallback to drawing if no images available
-        drawArcReactorBackground();
+        // Switch to analog mode at top position
+        currentMode = MODE_ARC_ANALOG;
+        currentVertPos = POS_TOP;
+        isClockHidden = false;
+
+        // Update settings and switch mode
+        CLOCK_VERTICAL_OFFSET = currentVertPos;
+        saveSettings();
+        switchMode(MODE_ARC_ANALOG);
+        return;  // Exit early to avoid double updates
       }
-      // Reset previous values to force redraw
+    } else if (currentMode == MODE_ARC_ANALOG) {
+      // We're in analog mode - next press goes back to digital
+      currentMode = MODE_ARC_DIGITAL;
+      currentVertPos = POS_TOP;
+      isClockHidden = false;
+
+      // Update settings and switch mode
+      CLOCK_VERTICAL_OFFSET = currentVertPos;
+      saveSettings();
+      switchMode(MODE_ARC_DIGITAL);
+      return;  // Exit early to avoid double updates
+    }
+  }
+
+  // Update CLOCK_VERTICAL_OFFSET
+  CLOCK_VERTICAL_OFFSET = currentVertPos;
+
+  // Update the display
+  drawBackground();
+  if (!isClockHidden) {
+    updateClockDisplay();
+  }
+
+  // Save settings
+  saveSettings();
+}
+
+// Check for button presses
+void checkButtonPress() {
+  // Check background button (GPIO 22)
+  if (digitalRead(BG_BUTTON_PIN) == LOW) {
+    if (millis() - lastBgButtonPress > debounceDelay) {
+      cycleBgImage();
+      lastBgButtonPress = millis();
+    }
+  }
+
+  // Check position button (GPIO 27)
+  if (digitalRead(POS_BUTTON_PIN) == LOW) {
+    if (millis() - lastPosButtonPress > debounceDelay) {
+      cycleVerticalPosition();
+      lastPosButtonPress = millis();
+    }
+  }
+
+  // Check color button (GPIO 25)
+  if (digitalRead(CLR_BUTTON_PIN) == LOW) {
+    if (millis() - lastClrButtonPress > debounceDelay) {
+      cycleLedColor();
+      updateLEDs();  // Immediately update LEDs to show new color
+      saveSettings();
+      lastClrButtonPress = millis();
+    }
+  }
+
+  // Check for force save (holding background and color buttons together)
+  if (digitalRead(BG_BUTTON_PIN) == LOW && digitalRead(CLR_BUTTON_PIN) == LOW) {
+    static unsigned long forceSaveStartTime = 0;
+    static bool forceSaveActive = false;
+
+    if (!forceSaveActive) {
+      forceSaveStartTime = millis();
+      forceSaveActive = true;
+    } else if (millis() - forceSaveStartTime > 2000) {  // Hold for 2 seconds
+      // Force save settings
+      Serial.println("Force saving settings!");
+      saveSettings();
+
+      // Flash LEDs to indicate settings saved
+      flashEffect();
+
+      // Reset state
+      forceSaveActive = false;
+
+      // Wait until buttons are released
+      while (digitalRead(BG_BUTTON_PIN) == LOW || digitalRead(CLR_BUTTON_PIN) == LOW) {
+        delay(10);
+      }
+    }
+  } else {
+    // Buttons not held - reset state
+    static bool prevForceSaveActive = false;
+    if (prevForceSaveActive) {
+      prevForceSaveActive = false;
+    }
+  }
+}
+
+// Draw the background based on current settings
+void drawBackground() {
+  // Clear screen first
+  tft.fillScreen(TFT_BLACK);
+
+  if (numBgImages <= 0 || currentBgIndex < 0 || currentBgIndex >= numBgImages) {
+    return;  // No valid background to draw
+  }
+
+  String bgFile = backgroundImages[currentBgIndex];
+
+  if (currentMode == MODE_PIPBOY) {
+    // For Pip-Boy mode, draw the Pip-Boy interface
+    drawPipBoyInterface();
+  } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
+    // For JPEG backgrounds, display the image
+    displayJPEGBackground(bgFile.c_str());
+  }
+}
+
+// Update the clock display based on current settings
+void updateClockDisplay() {
+  if (isClockHidden) return;  // Don't show the clock if hidden
+
+  switch (currentMode) {
+    case MODE_ARC_DIGITAL:
+      // Reset digital clock variables
       resetArcDigitalVariables();
+      // Update time display
       updateDigitalTime();
       break;
 
     case MODE_ARC_ANALOG:
-      // Arc Reactor analog interface with JPEG background
-      if (numArcImages > 0) {
-        // Use the same or different image (for variety)
-        int imageIndex = (numArcImages > 1) ? 1 : 0;
-        displayJPEGBackground(arcReactorImages[imageIndex].c_str());
-      } else {
-        // Fallback to drawing if no images available
-        drawArcReactorBackground();
-      }
+      // Initialize and draw analog clock
       initAnalogClock();
       drawAnalogClock();
       break;
 
     case MODE_PIPBOY:
-      // Pip-Boy interface - directly draw the interface without trying to load JPEG
-      drawPipBoyInterface();
-
-      // Set theme for Pip-Boy mode
-      setThemeFromId(THEME_ID_PIPBOY);
+      // Draw Pip-Boy interface (already done in drawBackground)
+      // Just update the time
+      updatePipBoyTime();
       break;
   }
+}
 
-  // Update LEDs to match the new mode/theme
-  updateLEDs();
+// Save current settings using the simplified approach
+void saveSettings() {
+  int ledColor = getCurrentLedColor();
 
-  // Save the current theme and mode to EEPROM
-  saveThemeAndMode();
+  Serial.println("Saving settings to file:");
+  Serial.print("  Background Index: ");
+  Serial.println(currentBgIndex);
+  Serial.print("  Clock Mode: ");
+  Serial.println(currentMode);
+  Serial.print("  Vertical Position: ");
+  Serial.println(currentVertPos);
+  Serial.print("  LED Color: ");
+  Serial.println(ledColor);
+
+  // Use the simplified file storage
+  bool success = saveSettingsToFile(
+    currentBgIndex,
+    currentMode,
+    currentVertPos,
+    ledColor);
+
+  if (success) {
+    Serial.println("Settings saved successfully");
+  } else {
+    Serial.println("Failed to save settings");
+  }
+}
+
+// Load settings using the simplified approach
+void loadSettings() {
+  int savedBgIndex = 0;
+  int savedMode = 0;
+  int savedVertPos = 0;
+  int savedLedColor = 0;
+
+  bool success = loadSettingsFromFile(
+    &savedBgIndex,
+    &savedMode,
+    &savedVertPos,
+    &savedLedColor);
+
+  if (!success) {
+    Serial.println("Could not load settings, using defaults");
+    return;
+  }
+
+  Serial.println("Successfully loaded settings from file");
+
+  // Apply settings if they are in valid range
+  if (savedBgIndex >= 0 && savedBgIndex < numBgImages) {
+    currentBgIndex = savedBgIndex;
+    Serial.print("Using saved background: ");
+    Serial.println(currentBgIndex);
+  }
+
+  if (savedMode >= 0 && savedMode < MODE_TOTAL) {
+    currentMode = savedMode;
+    Serial.print("Using saved mode: ");
+    Serial.println(currentMode);
+  }
+
+  if (savedVertPos == POS_TOP || savedVertPos == POS_CENTER || savedVertPos == POS_BOTTOM || savedVertPos == POS_HIDDEN) {
+    currentVertPos = savedVertPos;
+    isClockHidden = (savedVertPos == POS_HIDDEN);
+    CLOCK_VERTICAL_OFFSET = currentVertPos;
+    Serial.print("Using saved position: ");
+    Serial.println(currentVertPos);
+  }
+
+  if (savedLedColor >= 0 && savedLedColor < COLOR_TOTAL) {
+    // Update LED color
+    updateModeColorsFromLedColor(savedLedColor);
+    Serial.print("Using saved LED color: ");
+    Serial.println(savedLedColor);
+  }
 }
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\nStarting Multi-Mode Digital Clock with JPEG Support");
+  Serial.println("\nStarting Multi-Mode Digital Clock with Controls");
 
-  // Configure button
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  // Configure buttons with pull-up resistors
+  pinMode(BG_BUTTON_PIN, INPUT_PULLUP);   // Background cycle button
+  pinMode(POS_BUTTON_PIN, INPUT_PULLUP);  // Position cycle button
+  pinMode(CLR_BUTTON_PIN, INPUT_PULLUP);  // Color cycle button
 
   // Initialize NeoPixel LED ring
   pixels.begin();
   pixels.setBrightness(led_ring_brightness);
 
-  // Turn on all LEDs one by one with color based on current mode
+  // Initialize SPIFFS for image storage and settings storage
+  if (!SPIFFS.begin(true)) {
+    Serial.println("SPIFFS Mount Failed");
+  } else {
+    Serial.println("SPIFFS Mounted");
+    listSPIFFSFiles();
+  }
+
+  // Turn on all LEDs
   for (int i = 0; i < NUMPIXELS; i++) {
-    pixels.setPixelColor(i, pixels.Color(
-                              modeColors[currentMode].r,
-                              modeColors[currentMode].g,
-                              modeColors[currentMode].b));
+    pixels.setPixelColor(i, pixels.Color(0, 20, 255));  // Default blue
     pixels.show();
     delay(50);
   }
 
   // Flash the LEDs to show initialization
-  flashEffect();
+  flashEffect();  // Use the one from led_controls.h
 
   // Initialize SPI for the display
   SPI.end();
@@ -270,7 +544,7 @@ void setup() {
   tft.init();
   tft.setRotation(0);
   SPI.setFrequency(27000000);  // Set SPI clock to 27MHz for stability
-  tft.fillScreen(PIP_BLACK);
+  tft.fillScreen(TFT_BLACK);
 
   // Get display dimensions
   screenCenterX = tft.width() / 2;
@@ -282,21 +556,39 @@ void setup() {
   Serial.print("x");
   Serial.println(tft.height());
 
-  // Initialize theme system (replaces EEPROM initialization)
-  initThemeSystem();
-
-  // Initialize SPIFFS for image storage
-  if (!SPIFFS.begin(true)) {
-    Serial.println("SPIFFS Mount Failed");
-  } else {
-    Serial.println("SPIFFS Mounted");
-    listSPIFFSFiles();
-  }
-
   // Initialize TJpg_Decoder
   TJpgDec.setJpgScale(1);
   TJpgDec.setSwapBytes(true);
   TJpgDec.setCallback(tft_output);
+
+  // Test the JPEG decoder with a known good image
+  Serial.println("Testing JPEG decoder...");
+  if (SPIFFS.exists("/00_ironman.jpg")) {
+    File testFile = SPIFFS.open("/00_ironman.jpg", "r");
+    if (testFile) {
+      size_t testSize = testFile.size();
+      if (testSize > 100 && testSize < 150000) {
+        uint8_t* testBuf = (uint8_t*)malloc(testSize);
+        if (testBuf) {
+          testFile.read(testBuf, testSize);
+          testFile.close();
+
+          // Clear screen
+          tft.fillScreen(TFT_BLACK);
+
+          // Test decoding
+          bool testResult = TJpgDec.drawJpg(0, 0, testBuf, testSize);
+          free(testBuf);
+
+          Serial.print("JPEG decoder test result: ");
+          Serial.println(testResult ? "SUCCESS" : "FAILURE");
+        } else {
+          testFile.close();
+          Serial.println("JPEG test: Failed to allocate memory");
+        }
+      }
+    }
+  }
 
   // Connect to WiFi
   Serial.print("Connecting to WiFi");
@@ -319,7 +611,7 @@ void setup() {
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
     // Display connection status on screen
-    tft.fillScreen(PIP_BLACK);
+    tft.fillScreen(TFT_BLACK);
     tft.setTextSize(2);
     tft.setTextColor(TFT_GREEN);
     tft.setCursor(40, 80);
@@ -331,7 +623,7 @@ void setup() {
     Serial.println("\nWiFi connection failed. Using default values.");
 
     // Display status on screen
-    tft.fillScreen(PIP_BLACK);
+    tft.fillScreen(TFT_BLACK);
     tft.setTextSize(2);
     tft.setTextColor(TFT_RED);
     tft.setCursor(40, 100);
@@ -341,94 +633,95 @@ void setup() {
     delay(1000);
   }
 
-  // Check for available images
+  // Check for available images before loading settings
   checkForImageFiles();
 
-  // Check for saved settings using our new unified system
-  int loadedMode, loadedThemeId;
-  if (loadSavedThemeAndMode(&loadedMode, &loadedThemeId)) {
-    // We have valid settings
-    Serial.print("Found saved settings - Theme ID: ");
-    Serial.print(loadedThemeId);
-    Serial.print(", Mode: ");
-    Serial.println(loadedMode);
+  prioritizeIronManBackground();
 
-    // Apply the saved mode
-    currentMode = loadedMode;
+  // Load saved settings - using the file-based method
+  loadSettings();
 
-    // Apply the saved theme
-    setThemeFromId(loadedThemeId);
+  // Force save settings to ensure they exist for next boot
+  // This will create the settings file if it doesn't exist
+  saveSettings();
 
-    // Update the LED colors to match the saved theme/mode
-    updateLEDs();
+  // Draw the background and clock
+  drawBackground();
+  if (!isClockHidden) {
+    updateClockDisplay();
   }
 
-  // Draw initial interface based on current mode
-  switchMode(currentMode);
+  // Update LEDs with current color
+  updateLEDs();
+
+  Serial.println("Setup complete, entering main loop");
 }
 
 void loop() {
   unsigned long currentMillis = millis();
 
-  // Check for button press (to switch modes)
+  // Check for button presses
   checkButtonPress();
 
   // Get current time if needed
   bool timeUpdateNeeded = (currentMillis - lastTimeCheck >= 1000);
   bool colonUpdateNeeded = (currentMillis - lastColonBlink >= 500);
 
-  // Update based on current mode
-  if (currentMode == MODE_ARC_DIGITAL) {
-    // Arc Reactor digital mode
-    if (timeUpdateNeeded) {
-      lastTimeCheck = currentMillis;
-      updateTimeAndDate();
-      updateDigitalTime();
-    }
-
-    // Handle blinking colon for Arc Reactor digital mode
-    if (colonUpdateNeeded) {
-      lastColonBlink = currentMillis;
-      updateArcDigitalColon();
-    }
-  } else if (currentMode == MODE_ARC_ANALOG) {
-    // Arc Reactor analog mode
-    if (timeUpdateNeeded) {
-      lastTimeCheck = currentMillis;
-      updateTimeAndDate();
-
-      // Check if full refresh is needed
-      if (needClockRefresh) {
-        // Reset the flag first to avoid loops
-        needClockRefresh = false;
-        // Call the case directly by reusing switchMode with the same mode
-        switchMode(MODE_ARC_ANALOG);
-      } else {
-        // Normal update if no refresh needed
-        updateAnalogClock();
+  // Skip updates if clock is hidden
+  if (!isClockHidden) {
+    // Update based on current mode
+    if (currentMode == MODE_ARC_DIGITAL) {
+      // Digital mode
+      if (timeUpdateNeeded) {
+        lastTimeCheck = currentMillis;
+        updateTimeAndDate();
+        updateDigitalTime();
       }
+
+      // Handle blinking colon
+      if (colonUpdateNeeded) {
+        lastColonBlink = currentMillis;
+        updateArcDigitalColon();
+      }
+    } else if (currentMode == MODE_ARC_ANALOG) {
+      // Analog mode
+      if (timeUpdateNeeded) {
+        lastTimeCheck = currentMillis;
+        updateTimeAndDate();
+
+        // Check if full refresh is needed
+        if (needClockRefresh) {
+          // Reset the flag first to avoid loops
+          needClockRefresh = false;
+          drawBackground();
+          initAnalogClock();
+          drawAnalogClock();
+        } else {
+          // Normal update if no refresh needed
+          updateAnalogClock();
+        }
+      }
+    } else if (currentMode == MODE_PIPBOY) {
+      // Pip-Boy mode
+      if (timeUpdateNeeded) {
+        lastTimeCheck = currentMillis;
+        updateTimeAndDate();
+        updatePipBoyTime();
+      }
+
+      // Update the GIF animation
+      updatePipBoyGif();
     }
-  } else if (currentMode == MODE_PIPBOY) {
-    // Pip-Boy mode
+  } else {
+    // Even if clock is hidden, still update time
     if (timeUpdateNeeded) {
       lastTimeCheck = currentMillis;
       updateTimeAndDate();
-      updatePipBoyTime();
     }
-
-    // Update the GIF animation
-    updatePipBoyGif();
   }
 
   // LED ring effect every minute (when seconds = 0)
   if (seconds == 0 && (minutes == 0 || minutes == 30) && (currentMillis - lastTimeCheck < 1000)) {
-    flashEffect();
-  } else {
-    // Only update LEDs if needed to avoid SPI conflicts
-    static unsigned long lastLEDUpdate = 0;
-    if (currentMillis - lastLEDUpdate > 500) {  // Update LEDs at most every 500ms
-      updateLEDs();
-      lastLEDUpdate = currentMillis;
-    }
+    flashEffect();  // Use the one from led_controls.h
   }
 }

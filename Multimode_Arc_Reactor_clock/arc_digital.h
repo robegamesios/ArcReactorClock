@@ -13,13 +13,15 @@
 #include "utils.h"
 #include "led_controls.h"
 
+extern int CLOCK_VERTICAL_OFFSET;
+
 // For Arc Reactor digital mode
 int prevHours = -1, prevMinutes = -1, prevSeconds = -1;  // Track previous time values
 bool prevColonState = false;                             // Track previous colon state
 bool showColon = true;                                   // For blinking colon
 
 // Define a constant for the background image to use
-const char* DEFAULT_BACKGROUND = "/ironman00.jpg";
+const char* DEFAULT_BACKGROUND = "/00_ironman.jpg";
 
 #define CYAN_COLOR 0x07FF  // Keep the cyan for the text elements
 
@@ -32,7 +34,7 @@ const char* DEFAULT_BACKGROUND = "/ironman00.jpg";
 // 0 = Center of screen (default)
 // -80 = Near top of screen
 // 80 = Near bottom of screen
-#define CLOCK_VERTICAL_OFFSET 80
+int CLOCK_VERTICAL_OFFSET = 0;
 
 // Callback function for the TJpg_Decoder
 bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap) {
@@ -163,9 +165,14 @@ void resetArcDigitalVariables() {
 
 // Update digital time display - partial updates to improve performance
 void updateDigitalTime() {
-  // Only update the display if the time or colon state has changed
-  if (hours != prevHours || minutes != prevMinutes || seconds != prevSeconds || showColon != prevColonState) {
+  // Only update parts that have changed
+  bool hoursChanged = (hours != prevHours);
+  bool minutesChanged = (minutes != prevMinutes);
+  bool secondsChanged = (seconds != prevSeconds);
+  bool colonChanged = (showColon != prevColonState);
 
+  // Only update the display if the time or colon state has changed
+  if (hoursChanged || minutesChanged || secondsChanged || colonChanged) {
     // Create backgrounds for text that preserve most of the underlying image
     tft.setTextColor(CYAN_COLOR, TEXT_BACKGROUND_COLOR);
 

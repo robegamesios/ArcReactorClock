@@ -66,6 +66,9 @@ void drawClockFace() {
 
 // Optimized function to draw arc segments for seconds - reduces flicker
 void drawSecondsArc(int x, int y, int start_angle, int end_angle, int r, int thickness, unsigned int color) {
+  // Only redraw if the change is significant enough
+  if (abs(end_angle - start_angle) < 1) return;
+
   // Calculate the actual angles in radians
   float start_rad = start_angle * DEG_TO_RAD;
   float end_rad = end_angle * DEG_TO_RAD;
