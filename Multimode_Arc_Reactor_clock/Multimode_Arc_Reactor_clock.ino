@@ -44,8 +44,8 @@ Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 TFT_eSPI tft = TFT_eSPI();
 
 // WiFi settings - enter your credentials here
-const char* ssid = "ASUS-RT-AX56U-2.4G";  // Enter your WiFi network name
-const char* password = "tocino25";        // Enter your WiFi password
+const char* ssid = "SSID";  // Enter your WiFi network name
+const char* password = "PASSWORD";        // Enter your WiFi password
 
 // Time settings
 const char* ntpServer = "pool.ntp.org";
@@ -107,8 +107,6 @@ void setup() {
   // Flash the LEDs to show initialization
   flashEffect();
 
-  // CRITICAL FIX: Reinitialize SPI with the correct pins
-  // This is necessary for many GC9A01 displays to work with ESP32
   SPI.end();
   SPI.begin(18, 19, 23, 5);  // SCK, MISO, MOSI, SS
 
@@ -278,72 +276,143 @@ void loop() {
   }
 }
 
-// Function to check for available image files in SPIFFS
+// Improved displayJPEG function
+bool displayJPEG(const char* filename) {
+  Serial.print("\n--- JPEG Display Attempt ---\n");
+  Serial.print("Trying to display: ");
+  Serial.println(filename);
+
+  if (!SPIFFS.exists(filename)) {
+    Serial.print("ERROR: File does not exist: ");
+    Serial.println(filename);
+    return false;
+  }
+  
+  Serial.print("File exists, opening: ");
+  Serial.println(filename);
+
+  // Extract just the filename part for theme detection
+  String fullPath = String(filename);
+  // Get just the filename without the path
+  String justFilename = fullPath;
+  int lastSlash = fullPath.lastIndexOf('/');
+  if (lastSlash >= 0 && lastSlash < fullPath.length() - 1) {
+    justFilename = fullPath.substring(lastSlash + 1);
+  }
+  
+  Serial.print("Extracted filename for theme: ");
+  Serial.println(justFilename);
+  
+  // Set the theme based on the filename
+  setThemeFromFilename(justFilename.c_str());
+
+  File jpegFile = SPIFFS.open(filename, "r");
+  if (!jpegFile) {
+    Serial.println("ERROR: Failed to open JPEG file despite it existing");
+    return false;
+  }
+
+  // Get file size
+  size_t fileSize = jpegFile.size();
+  Serial.print("File size: ");
+  Serial.print(fileSize);
+  Serial.println(" bytes");
+
+  if (fileSize == 0) {
+    Serial.println("ERROR: File is empty (0 bytes)");
+    jpegFile.close();
+    return false;
+  }
+
+  // Use the TJpgDec library to decode and display the JPEG
+  uint8_t* jpegBuffer = (uint8_t*)malloc(fileSize);
+  if (!jpegBuffer) {
+    Serial.println("ERROR: Failed to allocate memory for JPEG");
+    jpegFile.close();
+    return false;
+  }
+
+  size_t bytesRead = jpegFile.read(jpegBuffer, fileSize);
+  jpegFile.close();
+  
+  Serial.print("Bytes read: ");
+  Serial.print(bytesRead);
+  Serial.print(" of ");
+  Serial.println(fileSize);
+
+  if (bytesRead != fileSize) {
+    Serial.println("ERROR: Failed to read entire file");
+    free(jpegBuffer);
+    return false;
+  }
+
+  // Decode and render the JPEG
+  Serial.println("Decoding and displaying JPEG...");
+  bool success = TJpgDec.drawJpg(0, 0, jpegBuffer, fileSize);
+  
+  if (!success) {
+    Serial.println("ERROR: TJpgDec.drawJpg failed to decode the image");
+  } else {
+    Serial.println("JPEG decoded and displayed successfully!");
+  }
+
+  // Free the buffer
+  free(jpegBuffer);
+  return success;
+}
+
 void checkForImageFiles() {
   File root = SPIFFS.open("/");
   File file = root.openNextFile();
 
   numArcImages = 0;  // Reset counter
 
+  Serial.println("\n----- Available Background Images -----");
+  
   while (file && numArcImages < 5) {
     String fileName = file.name();
 
-    // Check if this is a JPEG for Arc Reactor mode
-    if (fileName.endsWith(".jpg") && fileName.indexOf("arc_reactor") >= 0) {
+    // Check if this is a JPEG file
+    if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
       arcReactorImages[numArcImages] = fileName;
+      
+      // Extract just the filename without path for display
+      String justName = fileName;
+      int lastSlash = fileName.lastIndexOf('/');
+      if (lastSlash >= 0 && lastSlash < fileName.length() - 1) {
+        justName = fileName.substring(lastSlash + 1);
+      }
+      justName.toLowerCase();
+      
+      // Determine and report theme
+      String theme = "Default";
+      if (justName.startsWith(THEME_IRONMAN)) theme = "Iron Man (Blue/Red)";
+      else if (justName.startsWith(THEME_HULK)) theme = "Hulk (Green)";
+      else if (justName.startsWith(THEME_CAPTAIN)) theme = "Captain America (Blue/Red)";
+      else if (justName.startsWith(THEME_THOR)) theme = "Thor (Cyan/Yellow)";
+      else if (justName.startsWith(THEME_BLACK_WIDOW)) theme = "Black Widow (Red)";
+      
+      // Log file with theme
+      Serial.print(numArcImages + 1);
+      Serial.print(": ");
+      Serial.print(fileName);
+      Serial.print(" - Theme: ");
+      Serial.println(theme);
+      
       numArcImages++;
-      Serial.print("Found Arc Reactor image: ");
-      Serial.println(fileName);
     }
 
     file = root.openNextFile();
   }
+  
+  Serial.println("---------------------------------------");
 
   if (numArcImages == 0) {
-    Serial.println("No Arc Reactor JPEG images found in SPIFFS");
+    Serial.println("No JPEG images found in SPIFFS");
   } else {
     Serial.print("Found ");
     Serial.print(numArcImages);
-    Serial.println(" Arc Reactor images");
-  }
-}
-
-// Function to display a JPEG image from SPIFFS
-bool displayJPEG(const char* filename) {
-  if (SPIFFS.exists(filename)) {
-    Serial.print("Displaying JPEG: ");
-    Serial.println(filename);
-
-    File jpegFile = SPIFFS.open(filename, "r");
-    if (!jpegFile) {
-      Serial.println("Failed to open JPEG file");
-      return false;
-    }
-
-    // Get file size
-    size_t fileSize = jpegFile.size();
-
-    // Use the TJpgDec library to decode and display the JPEG
-    uint8_t* jpegBuffer = (uint8_t*)malloc(fileSize);
-    if (!jpegBuffer) {
-      Serial.println("Failed to allocate memory for JPEG");
-      jpegFile.close();
-      return false;
-    }
-
-    jpegFile.read(jpegBuffer, fileSize);
-    jpegFile.close();
-
-    // Decode and render the JPEG
-    TJpgDec.drawJpg(0, 0, jpegBuffer, fileSize);
-
-    // Free the buffer
-    free(jpegBuffer);
-    return true;
-  } else {
-    Serial.print("JPEG file not found: ");
-    Serial.println(filename);
-    return false;
+    Serial.println(" background images");
   }
 }
 
@@ -411,4 +480,7 @@ void switchMode(int mode) {
       drawPipBoyInterface();
       break;
   }
+
+  // Update LEDs to match the new mode/theme
+  updateLEDs();
 }

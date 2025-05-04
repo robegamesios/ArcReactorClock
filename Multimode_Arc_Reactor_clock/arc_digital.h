@@ -11,6 +11,7 @@
 #include <FS.h>
 #include <TJpg_Decoder.h>
 #include "utils.h"
+#include "led_controls.h"
 
 // For Arc Reactor digital mode
 int prevHours = -1, prevMinutes = -1, prevSeconds = -1; // Track previous time values
@@ -20,10 +21,7 @@ bool showColon = true;                                 // For blinking colon
 // Define a constant for the background image to use
 const char* DEFAULT_BACKGROUND = "/ironman00.jpg";
 
-// Iron Man color scheme
-#define IRONMAN_RED 0xF800    // Bright red for the solid ring
-#define IRONMAN_GOLD 0xFD20   // Gold color for the outer circle
-#define IRONMAN_CYAN 0x07FF   // Keep the cyan for the text elements
+#define CYAN_COLOR 0x07FF   // Keep the cyan for the text elements
 
 // Semi-transparent overlay - a very dark overlay that will still show JPEG details
 #define TEXT_BACKGROUND_COLOR 0x0001  // Nearly black but not solid
@@ -80,7 +78,7 @@ bool displayJPEGBackground(const char* filename) {
   Serial.print("Filename for theme: ");
   Serial.println(justFilename);
   
-  // Set theme based on filename
+  // Set theme based on filename - using the function from led_controls.h
   setThemeFromFilename(justFilename.c_str());
   
   // Method 1: Try direct SPIFFS drawing
@@ -152,8 +150,8 @@ void drawArcReactorBackground() {
   // Clear the display
   tft.fillScreen(TFT_BLACK);
   
-  // Get the filename for theme detection, regardless of whether the image loads
-  String filename = DEFAULT_BACKGROUND;  // Use the constant rather than hardcoding
+  // Extract the filename for logging purposes
+  String filename = DEFAULT_BACKGROUND;
   String justName = filename;
   int lastSlash = filename.lastIndexOf('/');
   if (lastSlash >= 0) {
@@ -166,42 +164,10 @@ void drawArcReactorBackground() {
     justName = justName.substring(0, lastDot);
   }
   
-  // Set the theme based on the filename first, before attempting to load the image
-  Serial.print("Setting theme based on filename: ");
+  Serial.print("Using background image: ");
   Serial.println(justName);
   
-  // Convert to lowercase for comparison
-  justName.toLowerCase();
-  
-  // Set theme based on filename prefix
-  if (justName.startsWith("hulk")) {
-    Serial.println("Using Hulk theme (green)");
-    modeColors[0] = { 0, 255, 50, 0x07E0 };  // Green digital
-    modeColors[1] = { 0, 255, 50, 0x07E0 };  // Green analog
-  } else if (justName.startsWith("ironman")) {
-    Serial.println("Using Iron Man theme (blue)");
-    modeColors[0] = { 0, 20, 255, 0x051F };  // Blue digital
-    modeColors[1] = { 0, 20, 255, 0x051F };  // Blue analog
-  } else if (justName.startsWith("spiderman")) {
-    Serial.println("Using Captain America theme (red)");
-    modeColors[0] = { 255, 0, 0, 0xF800 };   // Red digital
-    modeColors[1] = { 255, 0, 0, 0xF800 };   // Red analog
-  } else if (justName.startsWith("thor")) {
-    Serial.println("Using Thor theme (yellow)");
-    modeColors[0] = { 255, 255, 0, 0xFFE0 }; // Yellow digital
-    modeColors[1] = { 255, 255, 0, 0xFFE0 }; // Yellow analog
-  } else if (justName.startsWith("widow")) {
-    Serial.println("Using Black Widow theme (red)");
-    modeColors[0] = { 255, 0, 0, 0xF800 };   // Red digital
-    modeColors[1] = { 255, 0, 0, 0xF800 };   // Red analog
-  } else {
-    Serial.println("No specific theme detected, using default");
-  }
-  
-  // Update LEDs to match the selected theme
-  updateLEDs();
-  
-  // Try to load JPEG background using the constant
+  // Try to load JPEG background using the constant and set theme via led_controls.h
   if (!displayJPEGBackground(DEFAULT_BACKGROUND)) {
     Serial.println("No jpeg background found");
   }
@@ -226,7 +192,7 @@ void updateDigitalTime() {
   if (hours != prevHours || minutes != prevMinutes || seconds != prevSeconds || showColon != prevColonState) {
     
     // Create backgrounds for text that preserve most of the underlying image
-    tft.setTextColor(IRONMAN_CYAN, TEXT_BACKGROUND_COLOR);
+    tft.setTextColor(CYAN_COLOR, TEXT_BACKGROUND_COLOR);
     
     // Handle seconds update - at the top for symmetry
     if (seconds != prevSeconds) {
@@ -348,7 +314,7 @@ void updateArcDigitalColon() {
     
     if (showColon) {
       // Draw colon with semi-transparent background
-      tft.setTextColor(IRONMAN_CYAN, TEXT_BACKGROUND_COLOR);
+      tft.setTextColor(CYAN_COLOR, TEXT_BACKGROUND_COLOR);
       tft.setTextSize(4);
       tft.setCursor(screenCenterX - 10, screenCenterY - 20 + CLOCK_VERTICAL_OFFSET);
       tft.print(":");

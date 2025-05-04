@@ -18,14 +18,24 @@ struct LEDColors {
   int r;
   int g;
   int b;
+  uint16_t tft_color; // Added TFT color value for easy use with the display
 };
 
-// Mode colors definitions
+// Mode colors definitions (default values - can be changed dynamically)
 LEDColors modeColors[3] = {
-  { 0, 20, 255 },   // Blue for Arc Reactor digital
-  { 255, 0, 0 },  // Red for Arc Reactor analog
-  { 0, 255, 50 }    // Green for Pip-Boy mode
+  { 0, 20, 255, 0x051F },   // Blue for Arc Reactor digital with TFT color
+  { 0, 20, 255, 0x051F },   // Blue for Arc Reactor analog with TFT color (matching digital)
+  { 0, 255, 50, 0x07E0 }    // Green for Pip-Boy mode with TFT color
 };
+
+// Character-based theme identifiers
+// These need to be lowercase as we're doing case-insensitive matching
+#define THEME_IRONMAN "ironman"
+#define THEME_HULK "hulk"
+#define THEME_CAPTAIN "captain"
+#define THEME_THOR "thor"
+#define THEME_BLACK_WIDOW "widow"
+#define THEME_SPIDERMAN "spiderman"  // Added Spiderman theme
 
 // External references
 extern Adafruit_NeoPixel pixels;
@@ -36,6 +46,99 @@ void greenLight();
 void blueLight();
 void flashEffect();
 void updateLEDs();
+void setThemeFromFilename(const char* filename);
+uint16_t getCurrentSecondRingColor();
+
+// Configure theme based on JPEG filename
+void setThemeFromFilename(const char* filename) {
+  // Create a debug message showing exactly what filename we're checking
+  Serial.print("Setting theme from filename: ");
+  Serial.println(filename);
+  
+  // Create a clean version of the filename (lowercase, no path)
+  String fname = String(filename);
+  fname.toLowerCase();
+  
+  // Remove leading slash if present
+  if (fname.startsWith("/")) {
+    fname = fname.substring(1);
+  }
+  
+  // Debug the cleaned filename
+  Serial.print("Cleaned filename for theme check: ");
+  Serial.println(fname);
+  
+  // Default is blue theme for both modes
+  // Apply default theme first
+  modeColors[0] = { 0, 20, 255, 0x051F };   // Blue digital
+  modeColors[1] = { 0, 20, 255, 0x051F };   // Blue analog
+  
+  // Let's do more explicit theme debugging
+  if (fname.startsWith(THEME_IRONMAN)) {
+    // Iron Man theme - Blue for both
+    modeColors[0] = { 0, 20, 255, 0x051F };   // Blue digital
+    modeColors[1] = { 0, 20, 255, 0x051F };   // Blue analog (matching digital)
+    Serial.println("→ Matched Iron Man theme (blue)");
+  }
+  else if (fname.startsWith(THEME_HULK)) {
+    // Hulk theme - Green for both
+    modeColors[0] = { 0, 255, 50, 0x07E0 };   // Green digital
+    modeColors[1] = { 0, 255, 50, 0x07E0 };   // Green analog
+    Serial.println("→ Matched Hulk theme (green)");
+  }
+  else if (fname.startsWith(THEME_CAPTAIN)) {
+    // Captain America theme - Blue for both
+    modeColors[0] = { 0, 50, 255, 0x037F };   // Blue digital
+    modeColors[1] = { 0, 50, 255, 0x037F };   // Blue analog (matching digital)
+    Serial.println("→ Matched Captain America theme (blue)");
+  }
+  else if (fname.startsWith(THEME_THOR)) {
+    // Thor theme - Yellow for both
+    modeColors[0] = { 255, 255, 0, 0xFFE0 };  // Yellow digital
+    modeColors[1] = { 255, 255, 0, 0xFFE0 };  // Yellow analog
+    Serial.println("→ Matched Thor theme (yellow)");
+  }
+  else if (fname.startsWith(THEME_BLACK_WIDOW)) {
+    // Black Widow theme - Red for both
+    modeColors[0] = { 255, 0, 0, 0xF800 };    // Red digital
+    modeColors[1] = { 255, 0, 0, 0xF800 };    // Red analog
+    Serial.println("→ Matched Black Widow theme (red)");
+  }
+  else if (fname.startsWith(THEME_SPIDERMAN)) {
+    // Spiderman theme - Red for both
+    modeColors[0] = { 255, 0, 0, 0xF800 };    // Red digital
+    modeColors[1] = { 255, 0, 0, 0xF800 };    // Red analog
+    Serial.println("→ Matched Spiderman theme (red)");
+  }
+  else {
+    // No theme matched, use default
+    Serial.println("→ No specific theme matched, using default (blue)");
+  }
+  
+  // Print the selected colors for debugging
+  Serial.print("Selected colors - Digital: RGB(");
+  Serial.print(modeColors[0].r);
+  Serial.print(",");
+  Serial.print(modeColors[0].g);
+  Serial.print(",");
+  Serial.print(modeColors[0].b);
+  Serial.print("), Analog: RGB(");
+  Serial.print(modeColors[1].r);
+  Serial.print(",");
+  Serial.print(modeColors[1].g);
+  Serial.print(",");
+  Serial.print(modeColors[1].b);
+  Serial.println(")");
+  
+  // Update the LED colors immediately
+  updateLEDs();
+}
+
+// Get the current second ring color based on mode
+uint16_t getCurrentSecondRingColor() {
+  // Return the TFT color value for the current mode
+  return modeColors[currentMode].tft_color;
+}
 
 // LED ring functions
 void greenLight() {
@@ -52,7 +155,7 @@ void greenLight() {
 
 void blueLight() {
   pixels.setBrightness(led_ring_brightness);
-  // Set all pixels to Arc Reactor color (now Iron Man red/gold based on mode)
+  // Use the current mode's color
   int modeIndex = (currentMode == 0) ? 0 : 1;  // Use different colors for digital vs analog
   for (int i = 0; i < pixels.numPixels(); i++) {
     pixels.setPixelColor(i, pixels.Color(

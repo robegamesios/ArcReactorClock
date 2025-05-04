@@ -10,6 +10,7 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include "utils.h"
+#include "led_controls.h"
 
 extern bool needClockRefresh;
 
@@ -24,7 +25,7 @@ float prevMinuteAngle = -1, prevHourAngle = -1;
 // Define colors for better visibility
 #define HOUR_HAND_COLOR TFT_WHITE
 #define MINUTE_HAND_COLOR 0xFFE0  // Bright yellow
-#define SECOND_RING_COLOR 0xF800  // Bright red
+// Second ring color will be dynamic based on theme
 #define CENTER_DOT_COLOR 0x07FF   // Cyan
 #define HOUR_MARKER_COLOR 0x07FF  // Cyan for hour markers
 
@@ -68,9 +69,6 @@ void drawSecondsArc(int x, int y, int start_angle, int end_angle, int r, int thi
   // Calculate the actual angles in radians
   float start_rad = start_angle * DEG_TO_RAD;
   float end_rad = end_angle * DEG_TO_RAD;
-
-  // Instead of drawing the entire arc as segments, just draw the end points
-  // and connect them with lines - this is much faster and reduces flicker
 
   // Calculate the 4 corner points of the arc segment
   int x0 = x + cos(start_rad) * (r - thickness);
@@ -122,12 +120,15 @@ void drawAnalogClock() {
   prevMinuteY = minuteY;
   prevMinuteAngle = minuteAngle;
 
+  // Get the dynamic color for seconds ring based on current theme
+  uint16_t secondRingColor = getCurrentSecondRingColor();
+
   // For initial draw, draw the seconds ring in segments to avoid flicker
   // Draw from 270 degrees (top/12 o'clock) to current second position
   for (int i = 0; i < seconds; i++) {
     int startAngle = 270 + (i * 6);
     int endAngle = startAngle + 6;
-    drawSecondsArc(screenCenterX, screenCenterY, startAngle, endAngle, RING_RADIUS, RING_THICKNESS, SECOND_RING_COLOR);
+    drawSecondsArc(screenCenterX, screenCenterY, startAngle, endAngle, RING_RADIUS, RING_THICKNESS, secondRingColor);
   }
 
   prevSecond = seconds;
@@ -152,6 +153,9 @@ void updateAnalogClock() {
     needClockRefresh = true;
     return;
   }
+
+  // Get the dynamic color for seconds ring based on current theme
+  uint16_t secondRingColor = getCurrentSecondRingColor();
 
   // Update second ring if it changed
   if (seconds != prevSecond) {
@@ -221,8 +225,8 @@ void updateAnalogClock() {
       int startAngle = 270 + (seconds * 6) - 6;  // Previous second position
       int endAngle = startAngle + 6;             // Current second position
 
-      // Draw the new segment
-      drawSecondsArc(screenCenterX, screenCenterY, startAngle, endAngle, RING_RADIUS, RING_THICKNESS, SECOND_RING_COLOR);
+      // Draw the new segment with the theme color
+      drawSecondsArc(screenCenterX, screenCenterY, startAngle, endAngle, RING_RADIUS, RING_THICKNESS, secondRingColor);
     }
 
     prevSecond = seconds;
