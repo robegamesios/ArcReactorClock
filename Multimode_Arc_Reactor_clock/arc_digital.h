@@ -70,10 +70,10 @@ bool displayJPEGBackground(const char* filename) {
     justFilename = fullPath.substring(lastSlash + 1);
   }
 
-  // Set theme based on filename - using the function from led_controls.h
+  // Set theme based on filename - using the function from theme_manager.h
   setThemeFromFilename(justFilename.c_str());
 
-  // Try direct JPEG decoding method
+  // Try direct decoding method first (most efficient)
   bool decoded = TJpgDec.drawFsJpg(0, 0, filename);
 
   if (decoded) {
@@ -83,43 +83,54 @@ bool displayJPEGBackground(const char* filename) {
 
   // If direct method failed, try buffer method
   Serial.println("Direct decoding failed. Trying buffer method...");
-  File jpegFile = SPIFFS.open(filename, "r");
-  if (!jpegFile) {
-    Serial.println("ERROR: Failed to open JPEG file");
-    return false;
-  }
 
-  // Get file size
-  size_t fileSize = jpegFile.size();
-  if (fileSize == 0) {
-    Serial.println("ERROR: File is empty");
+  // Use a scope to ensure File is properly closed even on error
+  bool success = false;
+  {
+    File jpegFile = SPIFFS.open(filename, "r");
+    if (!jpegFile) {
+      Serial.println("ERROR: Failed to open JPEG file");
+      return false;
+    }
+
+    // Get file size
+    size_t fileSize = jpegFile.size();
+    if (fileSize == 0) {
+      Serial.println("ERROR: File is empty");
+      jpegFile.close();
+      return false;
+    }
+
+    // Use a smart pointer approach with std::unique_ptr
+    // (Note: Arduino doesn't support std::unique_ptr, so we'll use a custom approach)
+    uint8_t* jpegBuffer = nullptr;
+
+    // Allocate buffer for the JPEG
+    jpegBuffer = (uint8_t*)malloc(fileSize);
+    if (!jpegBuffer) {
+      Serial.println("ERROR: Failed to allocate memory");
+      jpegFile.close();
+      return false;
+    }
+
+    // Read file into buffer
+    size_t bytesRead = jpegFile.read(jpegBuffer, fileSize);
     jpegFile.close();
-    return false;
-  }
 
-  // Allocate buffer for the JPEG
-  uint8_t* jpegBuffer = (uint8_t*)malloc(fileSize);
-  if (!jpegBuffer) {
-    Serial.println("ERROR: Failed to allocate memory");
-    jpegFile.close();
-    return false;
-  }
+    if (bytesRead != fileSize) {
+      Serial.println("ERROR: Read only partial file");
+      free(jpegBuffer);
+      return false;
+    }
 
-  // Read file into buffer
-  size_t bytesRead = jpegFile.read(jpegBuffer, fileSize);
-  jpegFile.close();
+    // Try to decode from buffer
+    success = TJpgDec.drawJpg(0, 0, jpegBuffer, fileSize);
 
-  if (bytesRead != fileSize) {
-    Serial.println("ERROR: Read only partial file");
+    // Free buffer regardless of success/failure
     free(jpegBuffer);
-    return false;
   }
 
-  // Try to decode from buffer
-  bool bufferDecoded = TJpgDec.drawJpg(0, 0, jpegBuffer, fileSize);
-  free(jpegBuffer);
-
-  if (bufferDecoded) {
+  if (success) {
     Serial.println("SUCCESS: JPEG decoded and displayed using buffer method!");
     return true;
   } else {
