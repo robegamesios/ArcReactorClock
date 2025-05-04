@@ -10,7 +10,7 @@
 #include <TFT_eSPI.h>
 
 // Colors
-#define PIP_GREEN 0x07E0 // Bright green for Pip-Boy mode
+#define PIP_GREEN 0x07E0  // Bright green for Pip-Boy mode
 #define PIP_BLACK 0x0000
 
 // Function declaration
@@ -31,17 +31,17 @@ void updateTimeAndDate() {
   // Get current time and date if WiFi is connected
   if (WiFi.status() == WL_CONNECTED) {
     struct tm timeinfo;
-    if(getLocalTime(&timeinfo)) {
+    if (getLocalTime(&timeinfo)) {
       hours = timeinfo.tm_hour;
       minutes = timeinfo.tm_min;
       seconds = timeinfo.tm_sec;
-      
+
       day = timeinfo.tm_mday;
-      month = timeinfo.tm_mon + 1; // tm_mon is 0-11
-      year = timeinfo.tm_year + 1900; // tm_year is years since 1900
-      
+      month = timeinfo.tm_mon + 1;     // tm_mon is 0-11
+      year = timeinfo.tm_year + 1900;  // tm_year is years since 1900
+
       // Get day of week
-      switch(timeinfo.tm_wday) {
+      switch (timeinfo.tm_wday) {
         case 0: dayOfWeek = "SUNDAY"; break;
         case 1: dayOfWeek = "MONDAY"; break;
         case 2: dayOfWeek = "TUESDAY"; break;
@@ -69,4 +69,4 @@ void updateTimeAndDate() {
   }
 }
 
-#endif // UTILS_H
+#endif  // UTILS_H
