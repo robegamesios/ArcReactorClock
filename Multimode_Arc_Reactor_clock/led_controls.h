@@ -2,7 +2,7 @@
  * led_controls.h - Functions for controlling the LED ring
  * For Multi-Mode Digital Clock project
  * 
- * REVISED VERSION - Consolidated LED functions
+ * REVISED VERSION - Simplified LED functions
  */
 
 #ifndef LED_CONTROLS_H
@@ -32,25 +32,24 @@ void updateLEDs();
 // LED ring functions
 void greenLight() {
   pixels.setBrightness(led_ring_brightness);
-  // Set all pixels to Pip-Boy green color
+  // Always use green for Pip-Boy mode
   for (int i = 0; i < pixels.numPixels(); i++) {
     pixels.setPixelColor(i, pixels.Color(
-                              modeColors[2].r,
-                              modeColors[2].g,
-                              modeColors[2].b));
+                              ledColors[COLOR_GREEN].r,
+                              ledColors[COLOR_GREEN].g,
+                              ledColors[COLOR_GREEN].b));
   }
   pixels.show();
 }
 
 void blueLight() {
   pixels.setBrightness(led_ring_brightness);
-  // Use the current mode's color
-  int modeIndex = (currentMode == 0) ? 0 : 1;  // Use different colors for digital vs analog
+  // Use the user-selected color
   for (int i = 0; i < pixels.numPixels(); i++) {
     pixels.setPixelColor(i, pixels.Color(
-                              modeColors[modeIndex].r,
-                              modeColors[modeIndex].g,
-                              modeColors[modeIndex].b));
+                              ledColors[currentLedColor].r,
+                              ledColors[currentLedColor].g,
+                              ledColors[currentLedColor].b));
   }
   pixels.show();
 }
@@ -87,7 +86,5 @@ void updateLEDs() {
       break;
   }
 }
-
-// Note: cycleLedColor() is now defined in theme_manager.h
 
 #endif  // LED_CONTROLS_H

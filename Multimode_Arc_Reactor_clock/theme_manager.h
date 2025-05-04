@@ -1,8 +1,8 @@
 /*
- * theme_manager.h - Unified theme management system
+ * theme_manager.h - Simplified theme management system
  * For Multi-Mode Digital Clock project
  * 
- * REVISED VERSION - Removed EEPROM dependencies and theme IDs, uses SPIFFS for storage
+ * REVISED VERSION - Removed modeColors array and automatic theme detection
  */
 
 #ifndef THEME_MANAGER_H
@@ -35,13 +35,6 @@ struct LEDColors {
   uint16_t tft_color;  // TFT color value for display
 };
 
-// Mode colors definitions (default values - can be changed dynamically)
-LEDColors modeColors[3] = {
-  { 0, 20, 255, 0x051F },  // Blue for Arc Reactor digital
-  { 0, 20, 255, 0x051F },  // Blue for Arc Reactor analog (matching digital)
-  { 0, 255, 50, 0x07E0 }   // Green for Pip-Boy mode
-};
-
 // Predefined LED colors array
 LEDColors ledColors[COLOR_TOTAL] = {
   { 0, 20, 255, 0x051F },    // Blue
@@ -65,79 +58,38 @@ void updateModeColorsFromLedColor(int colorIndex);
 uint16_t getCurrentSecondRingColor();
 void cycleLedColor();
 
-// In theme_manager.h
+// Simplified function that just logs the background being loaded
 void setThemeFromFilename(const char* filename) {
-  // Create a debug message showing what filename we're checking
-  Serial.print("Setting theme from filename: ");
+  Serial.print("Loading background: ");
   Serial.println(filename);
-
-  // Create a clean version of the filename (lowercase, no path)
-  String fname = String(filename);
-  fname.toLowerCase();
-
-  // Remove leading slash if present
-  if (fname.startsWith("/")) {
-    fname = fname.substring(1);
-  }
-
-  // Match filename to determine appropriate color
-  if (fname.indexOf("ironman") >= 0) {
-    currentLedColor = COLOR_BLUE;
-    Serial.println("→ Set Iron Man theme (blue)");
-  } else if (fname.indexOf("hulk") >= 0) {
-    currentLedColor = COLOR_GREEN;
-    Serial.println("→ Set Hulk theme (green)");
-  } else if (fname.indexOf("captain") >= 0) {
-    currentLedColor = COLOR_BLUE;
-    Serial.println("→ Set Captain America theme (blue)");
-  } else if (fname.indexOf("thor") >= 0) {
-    currentLedColor = COLOR_YELLOW;
-    Serial.println("→ Set Thor theme (yellow)");
-  } else if (fname.indexOf("widow") >= 0 || fname.indexOf("spiderman") >= 0) {
-    currentLedColor = COLOR_RED;
-    Serial.println("→ Set red theme");
-  } else {
-    // Default to blue
-    currentLedColor = COLOR_BLUE;
-    Serial.println("→ No specific theme matched, using default (blue)");
-  }
-
-  // Update mode colors based on the selected color
-  updateModeColorsFromLedColor(currentLedColor);
+  // No color changes - user preferences are preserved
 }
 
-// Update mode colors based on selected color
+// Simplified function to update LED color
 void updateModeColorsFromLedColor(int colorIndex) {
   if (colorIndex < 0 || colorIndex >= COLOR_TOTAL) {
     colorIndex = COLOR_BLUE;  // Default to blue if invalid
   }
-
+  
   currentLedColor = colorIndex;
-
-  // Update mode colors for digital and analog modes
-  if (currentMode != MODE_PIPBOY) {
-    // For non-Pip-Boy modes, apply selected color
-    modeColors[0] = ledColors[colorIndex];  // Digital mode
-    modeColors[1] = ledColors[colorIndex];  // Analog mode
-  }
-
-  // Always keep Pip-Boy in green
-  modeColors[2] = ledColors[COLOR_GREEN];
 }
 
 // Cycle through available LED colors
 void cycleLedColor() {
   // Cycle through predefined colors
   currentLedColor = (currentLedColor + 1) % COLOR_TOTAL;
-
-  // Update the mode colors based on the new color
-  updateModeColorsFromLedColor(currentLedColor);
 }
 
 // Get the current second ring color based on mode
 uint16_t getCurrentSecondRingColor() {
-  // Return the TFT color value for the current mode
-  return modeColors[currentMode].tft_color;
+  // For Pip-Boy mode, always use green
+  if (currentMode == MODE_PIPBOY) {
+    return ledColors[COLOR_GREEN].tft_color;
+  } 
+  // For other modes, use the current user-selected LED color
+  else {
+    return ledColors[currentLedColor].tft_color;
+  }
 }
 
 // Return the current LED color index
