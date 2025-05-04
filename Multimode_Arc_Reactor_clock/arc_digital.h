@@ -13,6 +13,8 @@
 #include "utils.h"
 #include "led_controls.h"
 
+extern int CLOCK_VERTICAL_OFFSET;
+
 // For Arc Reactor digital mode
 int prevHours = -1, prevMinutes = -1, prevSeconds = -1;  // Track previous time values
 bool prevColonState = false;                             // Track previous colon state
@@ -32,7 +34,7 @@ const char* DEFAULT_BACKGROUND = "/ironman00.jpg";
 // 0 = Center of screen (default)
 // -80 = Near top of screen
 // 80 = Near bottom of screen
-#define CLOCK_VERTICAL_OFFSET 80
+int CLOCK_VERTICAL_OFFSET = 0;
 
 // Callback function for the TJpg_Decoder
 bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap) {
