@@ -1,6 +1,8 @@
 /*
  * led_controls.h - Functions for controlling the LED ring
  * For Multi-Mode Digital Clock project
+ * 
+ * REVISED VERSION - Consolidated LED functions
  */
 
 #ifndef LED_CONTROLS_H
@@ -15,6 +17,7 @@
 // External references
 extern Adafruit_NeoPixel pixels;
 extern int currentMode;
+extern bool needClockRefresh;
 
 // LED ring brightness settings
 extern int led_ring_brightness;
@@ -84,5 +87,7 @@ void updateLEDs() {
       break;
   }
 }
+
+// Note: cycleLedColor() is now defined in theme_manager.h
 
 #endif  // LED_CONTROLS_H

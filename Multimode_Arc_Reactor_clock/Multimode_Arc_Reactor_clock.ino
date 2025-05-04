@@ -17,7 +17,6 @@
 #include <time.h>
 #include <SPIFFS.h>
 #include <TJpg_Decoder.h>
-#include <EEPROM.h>
 #include "simple_storage.h"
 
 // Hardware pins
@@ -50,44 +49,6 @@ TFT_eSPI tft = TFT_eSPI();
 #define POS_BOTTOM 80
 #define POS_HIDDEN 999  // Special value to hide the clock
 
-// EEPROM storage addresses
-#define EEPROM_SIZE 32
-#define BG_INDEX_ADDR 0     // Background image index
-#define CLOCK_MODE_ADDR 4   // Clock display mode
-#define VERT_POS_ADDR 8     // Vertical position
-#define LED_COLOR_ADDR 12   // LED color ID
-#define VALID_FLAG_ADDR 16  // Valid settings flag
-#define VALID_SETTINGS_FLAG 0xAA
-
-// LED color definitions
-#define COLOR_BLUE 0
-#define COLOR_RED 1
-#define COLOR_GREEN 2
-#define COLOR_YELLOW 3
-#define COLOR_CYAN 4
-#define COLOR_PURPLE 5
-#define COLOR_WHITE 6
-#define COLOR_TOTAL 7
-
-// LED color structure
-struct LEDColor {
-  int r;
-  int g;
-  int b;
-  uint16_t tft_color;  // TFT color value for display
-};
-
-// Define the LED colors array
-LEDColor ledColors[COLOR_TOTAL] = {
-  { 0, 20, 255, 0x051F },    // Blue
-  { 255, 0, 0, 0xF800 },     // Red
-  { 0, 255, 50, 0x07E0 },    // Green
-  { 255, 255, 0, 0xFFE0 },   // Yellow
-  { 0, 255, 255, 0x07FF },   // Cyan
-  { 180, 0, 255, 0xC01F },   // Purple
-  { 255, 255, 255, 0xFFFF }  // White
-};
-
 // For now, include these header files later after defining variables
 // they need access to
 #include "utils.h"
@@ -119,10 +80,9 @@ bool is24Hour = false;  // Use 12-hour format by default
 bool needClockRefresh = false;
 
 // Settings variables
-int currentBgIndex = 0;            // Current background index
-int currentVertPos = POS_CENTER;   // Current vertical position
-int currentLedColor = COLOR_BLUE;  // Current LED color
-bool isClockHidden = false;        // Clock visibility flag
+int currentBgIndex = 0;           // Current background index
+int currentVertPos = POS_CENTER;  // Current vertical position
+bool isClockHidden = false;       // Clock visibility flag
 
 // Button timing variables
 unsigned long lastTimeCheck = 0;
@@ -140,14 +100,12 @@ int numBgImages = 0;
 void checkForImageFiles();
 void cycleBgImage();
 void cycleVerticalPosition();
-void cycleLedColor();
 void checkButtonPress();
 void drawBackground();
 void updateClockDisplay();
 void saveSettings();
 void loadSettings();
 void listSPIFFSFiles();
-void updateLEDsWithCurrentColor();
 void switchMode(int mode);
 
 // Helper function to list files in SPIFFS
@@ -362,65 +320,6 @@ void cycleVerticalPosition() {
   saveSettings();
 }
 
-// Handle LED color button press
-// Handle LED color button press
-void cycleLedColor() {
-  // Cycle through predefined colors
-  currentLedColor = (currentLedColor + 1) % COLOR_TOTAL;
-
-  // Update the theme colors based on selected color
-  switch (currentLedColor) {
-    case COLOR_BLUE:
-      modeColors[0] = { 0, 20, 255, 0x051F };  // Blue
-      modeColors[1] = { 0, 20, 255, 0x051F };
-      break;
-    case COLOR_RED:
-      modeColors[0] = { 255, 0, 0, 0xF800 };  // Red
-      modeColors[1] = { 255, 0, 0, 0xF800 };
-      break;
-    case COLOR_GREEN:
-      modeColors[0] = { 0, 255, 50, 0x07E0 };  // Green
-      modeColors[1] = { 0, 255, 50, 0x07E0 };
-      break;
-    case COLOR_YELLOW:
-      modeColors[0] = { 255, 255, 0, 0xFFE0 };  // Yellow
-      modeColors[1] = { 255, 255, 0, 0xFFE0 };
-      break;
-    case COLOR_CYAN:
-      modeColors[0] = { 0, 255, 255, 0x07FF };  // Cyan
-      modeColors[1] = { 0, 255, 255, 0x07FF };
-      break;
-    case COLOR_PURPLE:
-      modeColors[0] = { 180, 0, 255, 0xC01F };  // Purple
-      modeColors[1] = { 180, 0, 255, 0xC01F };
-      break;
-    case COLOR_WHITE:
-      modeColors[0] = { 255, 255, 255, 0xFFFF };  // White
-      modeColors[1] = { 255, 255, 255, 0xFFFF };
-      break;
-  }
-
-  // Always keep Pip-Boy in green
-  modeColors[2] = { 0, 255, 50, 0x07E0 };
-
-  // Update LED ring with the new color
-  updateLEDs();  // Use the function from led_controls.h
-
-  // If in analog mode, update the seconds ring
-  if (currentMode == MODE_ARC_ANALOG && !isClockHidden) {  // Changed from MODE_ANALOG
-    needClockRefresh = true;
-  }
-
-  // Save settings
-  saveSettings();
-}
-
-// Update LEDs with current color - wrapper around existing function
-void updateLEDsWithCurrentColor() {
-  // The updateLEDs function is already defined in led_controls.h and uses modeColors
-  updateLEDs();
-}
-
 // Check for button presses
 void checkButtonPress() {
   // Check background button (GPIO 22)
@@ -443,6 +342,7 @@ void checkButtonPress() {
   if (digitalRead(CLR_BUTTON_PIN) == LOW) {
     if (millis() - lastClrButtonPress > debounceDelay) {
       cycleLedColor();
+      saveSettings();
       lastClrButtonPress = millis();
     }
   }
@@ -528,6 +428,8 @@ void updateClockDisplay() {
 
 // Save current settings using the simplified approach
 void saveSettings() {
+  int ledColor = getCurrentLedColor();
+
   Serial.println("Saving settings to file:");
   Serial.print("  Background Index: ");
   Serial.println(currentBgIndex);
@@ -536,58 +438,20 @@ void saveSettings() {
   Serial.print("  Vertical Position: ");
   Serial.println(currentVertPos);
   Serial.print("  LED Color: ");
-  Serial.println(currentLedColor);
+  Serial.println(ledColor);
 
   // Use the simplified file storage
   bool success = saveSettingsToFile(
     currentBgIndex,
     currentMode,
     currentVertPos,
-    currentLedColor);
+    ledColor);
 
   if (success) {
     Serial.println("Settings saved successfully");
   } else {
     Serial.println("Failed to save settings");
   }
-}
-
-// Helper function to set mode colors based on selected color
-void updateModeColorsFromLedColor(int colorIndex) {
-  // Update the theme colors based on selected color
-  switch (colorIndex) {
-    case COLOR_BLUE:
-      modeColors[0] = { 0, 20, 255, 0x051F };  // Blue
-      modeColors[1] = { 0, 20, 255, 0x051F };
-      break;
-    case COLOR_RED:
-      modeColors[0] = { 255, 0, 0, 0xF800 };  // Red
-      modeColors[1] = { 255, 0, 0, 0xF800 };
-      break;
-    case COLOR_GREEN:
-      modeColors[0] = { 0, 255, 50, 0x07E0 };  // Green
-      modeColors[1] = { 0, 255, 50, 0x07E0 };
-      break;
-    case COLOR_YELLOW:
-      modeColors[0] = { 255, 255, 0, 0xFFE0 };  // Yellow
-      modeColors[1] = { 255, 255, 0, 0xFFE0 };
-      break;
-    case COLOR_CYAN:
-      modeColors[0] = { 0, 255, 255, 0x07FF };  // Cyan
-      modeColors[1] = { 0, 255, 255, 0x07FF };
-      break;
-    case COLOR_PURPLE:
-      modeColors[0] = { 180, 0, 255, 0xC01F };  // Purple
-      modeColors[1] = { 180, 0, 255, 0xC01F };
-      break;
-    case COLOR_WHITE:
-      modeColors[0] = { 255, 255, 255, 0xFFFF };  // White
-      modeColors[1] = { 255, 255, 255, 0xFFFF };
-      break;
-  }
-
-  // Always keep Pip-Boy in green
-  modeColors[2] = { 0, 255, 50, 0x07E0 };
 }
 
 // Load settings using the simplified approach
@@ -632,10 +496,10 @@ void loadSettings() {
   }
 
   if (savedLedColor >= 0 && savedLedColor < COLOR_TOTAL) {
-    currentLedColor = savedLedColor;
-    updateModeColorsFromLedColor(currentLedColor);
+    // Update LED color
+    updateModeColorsFromLedColor(savedLedColor);
     Serial.print("Using saved LED color: ");
-    Serial.println(currentLedColor);
+    Serial.println(savedLedColor);
   }
 }
 
@@ -773,7 +637,7 @@ void setup() {
 
   prioritizeIronManBackground();
 
-  // Load saved settings - using the file-based method now
+  // Load saved settings - using the file-based method
   loadSettings();
 
   // Force save settings to ensure they exist for next boot
