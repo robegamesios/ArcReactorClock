@@ -165,9 +165,14 @@ void resetArcDigitalVariables() {
 
 // Update digital time display - partial updates to improve performance
 void updateDigitalTime() {
-  // Only update the display if the time or colon state has changed
-  if (hours != prevHours || minutes != prevMinutes || seconds != prevSeconds || showColon != prevColonState) {
+  // Only update parts that have changed
+  bool hoursChanged = (hours != prevHours);
+  bool minutesChanged = (minutes != prevMinutes);
+  bool secondsChanged = (seconds != prevSeconds);
+  bool colonChanged = (showColon != prevColonState);
 
+  // Only update the display if the time or colon state has changed
+  if (hoursChanged || minutesChanged || secondsChanged || colonChanged) {
     // Create backgrounds for text that preserve most of the underlying image
     tft.setTextColor(CYAN_COLOR, TEXT_BACKGROUND_COLOR);
 
