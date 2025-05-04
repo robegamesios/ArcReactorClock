@@ -18,6 +18,7 @@
 #include <SPIFFS.h>
 #include <TJpg_Decoder.h>
 #include <EEPROM.h>
+#include "simple_storage.h"
 
 // Hardware pins
 #define LED_PIN 21         // NeoPixel LED ring pin
@@ -417,6 +418,38 @@ void checkButtonPress() {
       lastClrButtonPress = millis();
     }
   }
+
+  // Check for force save (holding background and color buttons together)
+  if (digitalRead(BG_BUTTON_PIN) == LOW && digitalRead(CLR_BUTTON_PIN) == LOW) {
+    static unsigned long forceSaveStartTime = 0;
+    static bool forceSaveActive = false;
+
+    if (!forceSaveActive) {
+      forceSaveStartTime = millis();
+      forceSaveActive = true;
+    } else if (millis() - forceSaveStartTime > 2000) {  // Hold for 2 seconds
+      // Force save settings
+      Serial.println("Force saving settings!");
+      saveSettings();
+
+      // Flash LEDs to indicate settings saved
+      flashEffect();
+
+      // Reset state
+      forceSaveActive = false;
+
+      // Wait until buttons are released
+      while (digitalRead(BG_BUTTON_PIN) == LOW || digitalRead(CLR_BUTTON_PIN) == LOW) {
+        delay(10);
+      }
+    }
+  } else {
+    // Buttons not held - reset state
+    static bool prevForceSaveActive = false;
+    if (prevForceSaveActive) {
+      prevForceSaveActive = false;
+    }
+  }
 }
 
 // Draw the background based on current settings
@@ -465,55 +498,117 @@ void updateClockDisplay() {
   }
 }
 
-// Save current settings to EEPROM
+// Save current settings using the simplified approach
 void saveSettings() {
-  EEPROM.writeInt(BG_INDEX_ADDR, currentBgIndex);
-  EEPROM.writeInt(CLOCK_MODE_ADDR, currentMode);
-  EEPROM.writeInt(VERT_POS_ADDR, currentVertPos);
-  EEPROM.writeInt(LED_COLOR_ADDR, currentLedColor);
-  EEPROM.writeUChar(VALID_FLAG_ADDR, VALID_SETTINGS_FLAG);
-  EEPROM.commit();
+  Serial.println("Saving settings to file:");
+  Serial.print("  Background Index: ");
+  Serial.println(currentBgIndex);
+  Serial.print("  Clock Mode: ");
+  Serial.println(currentMode);
+  Serial.print("  Vertical Position: ");
+  Serial.println(currentVertPos);
+  Serial.print("  LED Color: ");
+  Serial.println(currentLedColor);
 
-  Serial.println("Settings saved to EEPROM");
+  // Use the simplified file storage
+  bool success = saveSettingsToFile(
+    currentBgIndex,
+    currentMode,
+    currentVertPos,
+    currentLedColor);
+
+  if (success) {
+    Serial.println("Settings saved successfully");
+  } else {
+    Serial.println("Failed to save settings");
+  }
 }
 
-// Load settings from EEPROM
+// Helper function to set mode colors based on selected color
+void updateModeColorsFromLedColor(int colorIndex) {
+  // Update the theme colors based on selected color
+  switch (colorIndex) {
+    case COLOR_BLUE:
+      modeColors[0] = { 0, 20, 255, 0x051F };  // Blue
+      modeColors[1] = { 0, 20, 255, 0x051F };
+      break;
+    case COLOR_RED:
+      modeColors[0] = { 255, 0, 0, 0xF800 };  // Red
+      modeColors[1] = { 255, 0, 0, 0xF800 };
+      break;
+    case COLOR_GREEN:
+      modeColors[0] = { 0, 255, 50, 0x07E0 };  // Green
+      modeColors[1] = { 0, 255, 50, 0x07E0 };
+      break;
+    case COLOR_YELLOW:
+      modeColors[0] = { 255, 255, 0, 0xFFE0 };  // Yellow
+      modeColors[1] = { 255, 255, 0, 0xFFE0 };
+      break;
+    case COLOR_CYAN:
+      modeColors[0] = { 0, 255, 255, 0x07FF };  // Cyan
+      modeColors[1] = { 0, 255, 255, 0x07FF };
+      break;
+    case COLOR_PURPLE:
+      modeColors[0] = { 180, 0, 255, 0xC01F };  // Purple
+      modeColors[1] = { 180, 0, 255, 0xC01F };
+      break;
+    case COLOR_WHITE:
+      modeColors[0] = { 255, 255, 255, 0xFFFF };  // White
+      modeColors[1] = { 255, 255, 255, 0xFFFF };
+      break;
+  }
+
+  // Always keep Pip-Boy in green
+  modeColors[2] = { 0, 255, 50, 0x07E0 };
+}
+
+// Load settings using the simplified approach
 void loadSettings() {
-  if (EEPROM.readUChar(VALID_FLAG_ADDR) != VALID_SETTINGS_FLAG) {
-    Serial.println("No valid settings found in EEPROM");
+  int savedBgIndex = 0;
+  int savedMode = 0;
+  int savedVertPos = 0;
+  int savedLedColor = 0;
+
+  bool success = loadSettingsFromFile(
+    &savedBgIndex,
+    &savedMode,
+    &savedVertPos,
+    &savedLedColor);
+
+  if (!success) {
+    Serial.println("Could not load settings, using defaults");
     return;
   }
 
-  // Read saved values
-  int savedBgIndex = EEPROM.readInt(BG_INDEX_ADDR);
-  int savedMode = EEPROM.readInt(CLOCK_MODE_ADDR);
-  int savedVertPos = EEPROM.readInt(VERT_POS_ADDR);
-  int savedLedColor = EEPROM.readInt(LED_COLOR_ADDR);
+  Serial.println("Successfully loaded settings from file");
 
-  // Validate settings
+  // Apply settings if they are in valid range
   if (savedBgIndex >= 0 && savedBgIndex < numBgImages) {
     currentBgIndex = savedBgIndex;
+    Serial.print("Using saved background: ");
+    Serial.println(currentBgIndex);
   }
 
   if (savedMode >= 0 && savedMode < MODE_TOTAL) {
     currentMode = savedMode;
+    Serial.print("Using saved mode: ");
+    Serial.println(currentMode);
   }
 
   if (savedVertPos == POS_TOP || savedVertPos == POS_CENTER || savedVertPos == POS_BOTTOM || savedVertPos == POS_HIDDEN) {
     currentVertPos = savedVertPos;
     isClockHidden = (savedVertPos == POS_HIDDEN);
-
-    // Update CLOCK_VERTICAL_OFFSET
     CLOCK_VERTICAL_OFFSET = currentVertPos;
+    Serial.print("Using saved position: ");
+    Serial.println(currentVertPos);
   }
 
   if (savedLedColor >= 0 && savedLedColor < COLOR_TOTAL) {
     currentLedColor = savedLedColor;
-    // Apply the saved color
-    cycleLedColor();
+    updateModeColorsFromLedColor(currentLedColor);
+    Serial.print("Using saved LED color: ");
+    Serial.println(currentLedColor);
   }
-
-  Serial.println("Settings loaded from EEPROM");
 }
 
 void setup() {
@@ -529,13 +624,17 @@ void setup() {
   pixels.begin();
   pixels.setBrightness(led_ring_brightness);
 
-  // Initialize theme system
-  initThemeSystem();
+  // Initialize SPIFFS for image storage and settings storage
+  if (!SPIFFS.begin(true)) {
+    Serial.println("SPIFFS Mount Failed");
+  } else {
+    Serial.println("SPIFFS Mounted");
+    listSPIFFSFiles();
+  }
 
   // Turn on all LEDs
   for (int i = 0; i < NUMPIXELS; i++) {
-    pixels.setPixelColor(i, pixels.Color(
-                              modeColors[0].r, modeColors[0].g, modeColors[0].b));
+    pixels.setPixelColor(i, pixels.Color(0, 20, 255));  // Default blue
     pixels.show();
     delay(50);
   }
@@ -564,25 +663,39 @@ void setup() {
   Serial.print("x");
   Serial.println(tft.height());
 
-  // Initialize EEPROM
-  if (!EEPROM.begin(EEPROM_SIZE)) {
-    Serial.println("EEPROM initialization failed");
-  } else {
-    Serial.println("EEPROM initialized");
-  }
-
-  // Initialize SPIFFS for image storage
-  if (!SPIFFS.begin(true)) {
-    Serial.println("SPIFFS Mount Failed");
-  } else {
-    Serial.println("SPIFFS Mounted");
-    listSPIFFSFiles();
-  }
-
   // Initialize TJpg_Decoder
   TJpgDec.setJpgScale(1);
   TJpgDec.setSwapBytes(true);
   TJpgDec.setCallback(tft_output);
+
+  // Test the JPEG decoder with a known good image
+  Serial.println("Testing JPEG decoder...");
+  if (SPIFFS.exists("/01_hulk.jpg")) {
+    File testFile = SPIFFS.open("/01_hulk.jpg", "r");
+    if (testFile) {
+      size_t testSize = testFile.size();
+      if (testSize > 100 && testSize < 150000) {
+        uint8_t* testBuf = (uint8_t*)malloc(testSize);
+        if (testBuf) {
+          testFile.read(testBuf, testSize);
+          testFile.close();
+
+          // Clear screen
+          tft.fillScreen(TFT_BLACK);
+
+          // Test decoding
+          bool testResult = TJpgDec.drawJpg(0, 0, testBuf, testSize);
+          free(testBuf);
+
+          Serial.print("JPEG decoder test result: ");
+          Serial.println(testResult ? "SUCCESS" : "FAILURE");
+        } else {
+          testFile.close();
+          Serial.println("JPEG test: Failed to allocate memory");
+        }
+      }
+    }
+  }
 
   // Connect to WiFi
   Serial.print("Connecting to WiFi");
@@ -627,11 +740,15 @@ void setup() {
     delay(1000);
   }
 
-  // Check for available images
+  // Check for available images before loading settings
   checkForImageFiles();
 
-  // Load saved settings
+  // Load saved settings - using the file-based method now
   loadSettings();
+
+  // Force save settings to ensure they exist for next boot
+  // This will create the settings file if it doesn't exist
+  saveSettings();
 
   // Draw the background and clock
   drawBackground();
@@ -640,7 +757,9 @@ void setup() {
   }
 
   // Update LEDs with current color
-  updateLEDsWithCurrentColor();
+  updateLEDs();
+
+  Serial.println("Setup complete, entering main loop");
 }
 
 void loop() {

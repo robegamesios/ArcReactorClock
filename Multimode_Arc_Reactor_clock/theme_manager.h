@@ -84,7 +84,7 @@ void initThemeSystem() {
   }
 }
 
-// Set theme based on filename (e.g., from a JPEG file)
+// In theme_manager.h
 void setThemeFromFilename(const char* filename) {
   // Create a debug message showing what filename we're checking
   Serial.print("Setting theme from filename: ");
@@ -152,10 +152,14 @@ void setThemeFromFilename(const char* filename) {
     Serial.println("→ No specific theme matched, using default (blue)");
   }
 
-  // Save to EEPROM if not in Pip-Boy mode
-  if (currentMode != MODE_PIPBOY) {
-    saveThemeAndMode();
-  }
+  // IMPORTANT CHANGE: DO NOT save to EEPROM from here
+  // Just log what would have been saved
+  Serial.print("Theme would be saved: ID=");
+  Serial.print(currentThemeId);
+  Serial.print(", Mode=");
+  Serial.println(currentMode);
+
+  // DO NOT call saveThemeAndMode();
 }
 
 // Set theme based on theme name
@@ -218,16 +222,10 @@ void saveThemeAndMode() {
     Serial.println(currentThemeId);
   }
 
-  Serial.print("Saving theme ID: ");
+  Serial.print("Theme would be saved: ID=");
   Serial.print(currentThemeId);
-  Serial.print(", Mode: ");
+  Serial.print(", Mode=");
   Serial.println(currentMode);
-
-  // Write values to EEPROM
-  EEPROM.writeInt(THEME_ADDRESS, currentThemeId);
-  EEPROM.writeInt(MODE_ADDRESS, currentMode);
-  EEPROM.writeUChar(VALID_FLAG_ADDRESS, VALID_SETTINGS_FLAG);
-  EEPROM.commit();
 }
 
 // Load saved theme and mode from EEPROM
