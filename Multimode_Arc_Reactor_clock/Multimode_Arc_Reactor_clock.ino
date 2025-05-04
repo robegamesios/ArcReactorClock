@@ -209,6 +209,34 @@ void checkForImageFiles() {
   }
 }
 
+// Function to prioritize Iron Man image
+void prioritizeIronManBackground() {
+  // Skip if no images
+  if (numBgImages <= 1) return;
+
+  // Search for Iron Man image and move it to index 0
+  for (int i = 0; i < numBgImages; i++) {
+    String lowerName = backgroundImages[i];
+    lowerName.toLowerCase();
+
+    // Check if this is an Iron Man image
+    if (lowerName.indexOf("00_ironman") >= 0) {
+      // If it's not already at position 0, swap it
+      if (i > 0) {
+        String temp = backgroundImages[0];
+        backgroundImages[0] = backgroundImages[i];
+        backgroundImages[i] = temp;
+
+        Serial.println("Iron Man background moved to first position");
+      }
+      break;
+    }
+  }
+
+  // Ensure currentBgIndex is 0 for initial display
+  currentBgIndex = 0;
+}
+
 // Switch to a different clock mode - modified for button control
 void switchMode(int mode) {
   // Store old mode
@@ -742,6 +770,8 @@ void setup() {
 
   // Check for available images before loading settings
   checkForImageFiles();
+
+  prioritizeIronManBackground();
 
   // Load saved settings - using the file-based method now
   loadSettings();
