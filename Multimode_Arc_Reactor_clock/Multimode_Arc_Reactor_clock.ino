@@ -670,8 +670,8 @@ void setup() {
 
   // Test the JPEG decoder with a known good image
   Serial.println("Testing JPEG decoder...");
-  if (SPIFFS.exists("/01_hulk.jpg")) {
-    File testFile = SPIFFS.open("/01_hulk.jpg", "r");
+  if (SPIFFS.exists("/00_ironman.jpg")) {
+    File testFile = SPIFFS.open("/00_ironman.jpg", "r");
     if (testFile) {
       size_t testSize = testFile.size();
       if (testSize > 100 && testSize < 150000) {

@@ -21,7 +21,7 @@ bool prevColonState = false;                             // Track previous colon
 bool showColon = true;                                   // For blinking colon
 
 // Define a constant for the background image to use
-const char* DEFAULT_BACKGROUND = "/ironman00.jpg";
+const char* DEFAULT_BACKGROUND = "/00_ironman.jpg";
 
 #define CYAN_COLOR 0x07FF  // Keep the cyan for the text elements
 
