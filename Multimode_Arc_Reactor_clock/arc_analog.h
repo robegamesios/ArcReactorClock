@@ -31,7 +31,7 @@ float prevMinuteAngle = -1, prevHourAngle = -1;
 
 // Ring settings
 #define RING_THICKNESS 4  // Thickness of the seconds ring in pixels
-#define RING_RADIUS 120   // Absolute radius for a 240x240 screen (slightly beyond visible circle)
+#define RING_RADIUS 120   // Absolute radius for a 240x240 screen
 
 // Function prototypes
 void drawAnalogClock();
@@ -165,8 +165,8 @@ void updateAnalogClock() {
       prevSecond = seconds;
       return;  // Skip the rest of the update
     }
-    if (seconds == 0) {
 
+    if (seconds == 0) {
       // First, clear the seconds ring
       for (int i = 0; i < 60; i++) {
         int startAngle = 270 + (i * 6);

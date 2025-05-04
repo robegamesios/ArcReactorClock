@@ -13,9 +13,6 @@
 #define PIP_GREEN 0x07E0  // Bright green for Pip-Boy mode
 #define PIP_BLACK 0x0000
 
-// Function declaration
-extern void updateTimeAndDate();
-
 // References to external variables that are defined in the main sketch
 extern TFT_eSPI tft;
 extern int screenCenterX;

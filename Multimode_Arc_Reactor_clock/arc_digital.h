@@ -50,10 +50,9 @@ void updateArcDigitalColon();
 void resetArcDigitalVariables();
 bool displayJPEGBackground(const char* filename);
 
+// Display JPEG background - simplified version
 bool displayJPEGBackground(const char* filename) {
-  // Add detailed debugging
-  Serial.print("\n--- JPEG Background Display Attempt ---\n");
-  Serial.print("Trying to display: ");
+  Serial.print("Displaying JPEG background: ");
   Serial.println(filename);
 
   // Check if file exists
@@ -63,9 +62,6 @@ bool displayJPEGBackground(const char* filename) {
     return false;
   }
 
-  Serial.print("File exists, attempting to display: ");
-  Serial.println(filename);
-
   // Extract filename for theme detection
   String fullPath = String(filename);
   String justFilename = fullPath;
@@ -74,74 +70,61 @@ bool displayJPEGBackground(const char* filename) {
     justFilename = fullPath.substring(lastSlash + 1);
   }
 
-  Serial.print("Filename for theme: ");
-  Serial.println(justFilename);
-
   // Set theme based on filename - using the function from led_controls.h
   setThemeFromFilename(justFilename.c_str());
 
-  // Method 1: Try direct SPIFFS drawing
-  Serial.println("Attempting Method 1: TJpg_Decoder.drawFsJpg...");
+  // Try direct JPEG decoding method
   bool decoded = TJpgDec.drawFsJpg(0, 0, filename);
 
   if (decoded) {
     Serial.println("SUCCESS: JPEG decoded and displayed!");
     return true;
-  } else {
-    Serial.println("Method 1 FAILED. Trying Method 2 (buffer method)...");
+  }
 
-    // Method 2: Try buffer method if direct method failed
-    File jpegFile = SPIFFS.open(filename, "r");
-    if (!jpegFile) {
-      Serial.println("ERROR: Failed to open JPEG file");
-      return false;
-    }
+  // If direct method failed, try buffer method
+  Serial.println("Direct decoding failed. Trying buffer method...");
+  File jpegFile = SPIFFS.open(filename, "r");
+  if (!jpegFile) {
+    Serial.println("ERROR: Failed to open JPEG file");
+    return false;
+  }
 
-    // Get file size
-    size_t fileSize = jpegFile.size();
-    Serial.print("File size: ");
-    Serial.print(fileSize);
-    Serial.println(" bytes");
-
-    if (fileSize == 0) {
-      Serial.println("ERROR: File is empty");
-      jpegFile.close();
-      return false;
-    }
-
-    // Allocate buffer for the JPEG
-    uint8_t* jpegBuffer = (uint8_t*)malloc(fileSize);
-    if (!jpegBuffer) {
-      Serial.println("ERROR: Failed to allocate memory");
-      jpegFile.close();
-      return false;
-    }
-
-    // Read file into buffer
-    size_t bytesRead = jpegFile.read(jpegBuffer, fileSize);
+  // Get file size
+  size_t fileSize = jpegFile.size();
+  if (fileSize == 0) {
+    Serial.println("ERROR: File is empty");
     jpegFile.close();
+    return false;
+  }
 
-    if (bytesRead != fileSize) {
-      Serial.print("ERROR: Read only ");
-      Serial.print(bytesRead);
-      Serial.print(" of ");
-      Serial.print(fileSize);
-      Serial.println(" bytes");
-      free(jpegBuffer);
-      return false;
-    }
+  // Allocate buffer for the JPEG
+  uint8_t* jpegBuffer = (uint8_t*)malloc(fileSize);
+  if (!jpegBuffer) {
+    Serial.println("ERROR: Failed to allocate memory");
+    jpegFile.close();
+    return false;
+  }
 
-    // Try to decode from buffer
-    bool bufferDecoded = TJpgDec.drawJpg(0, 0, jpegBuffer, fileSize);
+  // Read file into buffer
+  size_t bytesRead = jpegFile.read(jpegBuffer, fileSize);
+  jpegFile.close();
+
+  if (bytesRead != fileSize) {
+    Serial.println("ERROR: Read only partial file");
     free(jpegBuffer);
+    return false;
+  }
 
-    if (bufferDecoded) {
-      Serial.println("SUCCESS: JPEG decoded and displayed using buffer method!");
-      return true;
-    } else {
-      Serial.println("ERROR: All JPEG decoding methods failed");
-      return false;
-    }
+  // Try to decode from buffer
+  bool bufferDecoded = TJpgDec.drawJpg(0, 0, jpegBuffer, fileSize);
+  free(jpegBuffer);
+
+  if (bufferDecoded) {
+    Serial.println("SUCCESS: JPEG decoded and displayed using buffer method!");
+    return true;
+  } else {
+    Serial.println("ERROR: All JPEG decoding methods failed");
+    return false;
   }
 }
 
@@ -149,29 +132,11 @@ void drawArcReactorBackground() {
   // Clear the display
   tft.fillScreen(TFT_BLACK);
 
-  // Extract the filename for logging purposes
-  String filename = DEFAULT_BACKGROUND;
-  String justName = filename;
-  int lastSlash = filename.lastIndexOf('/');
-  if (lastSlash >= 0) {
-    justName = filename.substring(lastSlash + 1);
-  }
-
-  // Extract just the filename without extension
-  int lastDot = justName.lastIndexOf('.');
-  if (lastDot > 0) {
-    justName = justName.substring(0, lastDot);
-  }
-
-  Serial.print("Using background image: ");
-  Serial.println(justName);
-
-  // Try to load JPEG background using the constant and set theme via led_controls.h
+  // Try to load JPEG background using the constant
   if (!displayJPEGBackground(DEFAULT_BACKGROUND)) {
-    Serial.println("No jpeg background found");
+    Serial.println("No JPEG background found, using plain background");
   }
 
-  // Print status info about vertical position
   Serial.print("Clock vertical position offset: ");
   Serial.println(CLOCK_VERTICAL_OFFSET);
 }
@@ -195,12 +160,6 @@ void updateDigitalTime() {
 
     // Handle seconds update - at the top for symmetry
     if (seconds != prevSeconds) {
-      // Position for seconds - apply vertical offset
-      int secondsX = screenCenterX - 15;
-      int secondsY = screenCenterY - 40 + CLOCK_VERTICAL_OFFSET;
-      int secondsWidth = 40;
-      int secondsHeight = 20;
-
       // Format seconds with leading zero if needed
       char timeStr[6];
       if (seconds < 10) {

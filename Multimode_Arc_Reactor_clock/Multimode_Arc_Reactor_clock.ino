@@ -2,7 +2,7 @@
  * Combined Digital Clock with Multiple Themes and JPEG Support
  * Includes:
  * 1. Arc Reactor Digital Mode (blue) with JPEG background
- * 2. Arc Reactor Analog Mode (blue) with JPEG background
+ * 2. Arc Reactor Analog Mode (blue) with JPEG background 
  * 3. Pip-Boy 3000 Mode (green)
  * Button press cycles through the clock faces
  */
@@ -13,9 +13,7 @@
 #include "Adafruit_NeoPixel.h"
 #include <WiFi.h>
 #include <time.h>
-#include <SPIFFS.h>  // For file system access
-
-// Include TJpgDec library for JPEG decoding
+#include <SPIFFS.h>
 #include <TJpg_Decoder.h>
 
 // Include custom header files for different clock modes
@@ -26,13 +24,14 @@
 #include "pipboy.h"
 #include "theme_persistence.h"
 
+// EEPROM settings
 #define EEPROM_SIZE 16            // Size of EEPROM allocation
 #define THEME_ADDRESS 0           // Address to store theme ID
 #define MODE_ADDRESS 4            // Address to store current mode
 #define VALID_FLAG_ADDRESS 8      // Address for valid settings flag
 #define VALID_SETTINGS_FLAG 0xAA  // Flag value indicating valid settings
 
-// Theme IDs - simple integers instead of hashes
+// Theme IDs
 #define THEME_ID_DEFAULT 0
 #define THEME_ID_IRONMAN 1
 #define THEME_ID_HULK 2
@@ -40,13 +39,12 @@
 #define THEME_ID_THOR 4
 #define THEME_ID_BLACK_WIDOW 5
 #define THEME_ID_SPIDERMAN 6
+#define THEME_ID_PIPBOY 7  // Add dedicated Pip-Boy theme ID
 
-// Define pins for NeoPixel LED ring
-#define LED_PIN 21
-#define NUMPIXELS 35
-
-// Button pin for mode switching
-#define BUTTON_PIN 22
+// Hardware pins
+#define LED_PIN 21     // NeoPixel LED ring pin
+#define NUMPIXELS 35   // Number of LEDs in the ring
+#define BUTTON_PIN 22  // Button pin for mode switching
 
 // Clock modes
 #define MODE_ARC_DIGITAL 0  // Arc Reactor digital mode
@@ -54,10 +52,8 @@
 #define MODE_PIPBOY 2       // Pip-Boy theme
 #define MODE_TOTAL 3        // Total number of modes
 
-// Initialize NeoPixel library
+// Initialize hardware
 Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
-
-// TFT Display settings
 TFT_eSPI tft = TFT_eSPI();
 
 // WiFi settings - enter your credentials here
@@ -81,25 +77,26 @@ String dayOfWeek = "WEDNESDAY";
 bool is24Hour = false;  // Use 12-hour format by default
 bool needClockRefresh = false;
 
-// Mode variable
+// Mode and timing variables
 int currentMode = MODE_ARC_DIGITAL;  // Start with Arc Reactor digital mode
-
-// Timing variables
 unsigned long lastTimeCheck = 0;
 unsigned long lastColonBlink = 0;
 unsigned long lastButtonPress = 0;
 unsigned long debounceDelay = 300;  // Debounce time in milliseconds
 
+// Array to store available image filenames
+String arcReactorImages[5];  // Up to 5 different Arc Reactor backgrounds
+int numArcImages = 0;
+
 // Function declarations
 void cleanupPipBoyMode();
 void updatePipBoyGif();
 void checkForImageFiles();
-bool loadImageList();
 void saveCurrentThemeAndMode(int themeID = THEME_ID_DEFAULT);
-
-// Array to store available image filenames
-String arcReactorImages[5];  // Up to 5 different Arc Reactor backgrounds
-int numArcImages = 0;
+void switchMode(int mode);
+bool displayJPEG(const char* filename);
+void checkButtonPress();
+void listSPIFFSFiles();
 
 void setup() {
   Serial.begin(115200);
@@ -125,17 +122,15 @@ void setup() {
   // Flash the LEDs to show initialization
   flashEffect();
 
+  // Initialize SPI for the display
   SPI.end();
   SPI.begin(18, 19, 23, 5);  // SCK, MISO, MOSI, SS
 
-  // Initialize TFT display with optimized settings
+  // Initialize TFT display
   Serial.println("Initializing display...");
   tft.init();
   tft.setRotation(0);
-
-  // This helps reduce flickering for some displays
   SPI.setFrequency(27000000);  // Set SPI clock to 27MHz for stability
-
   tft.fillScreen(PIP_BLACK);
 
   // Get display dimensions
@@ -160,14 +155,13 @@ void setup() {
     Serial.println("SPIFFS Mount Failed");
   } else {
     Serial.println("SPIFFS Mounted");
-    // List files in SPIFFS for debugging
     listSPIFFSFiles();
   }
 
   // Initialize TJpg_Decoder
-  TJpgDec.setJpgScale(1);           // Set the jpeg scale (1, 2, 4, or 8)
-  TJpgDec.setSwapBytes(true);       // Set byte swap option if needed for your display
-  TJpgDec.setCallback(tft_output);  // Set the callback function for rendering
+  TJpgDec.setJpgScale(1);
+  TJpgDec.setSwapBytes(true);
+  TJpgDec.setCallback(tft_output);
 
   // Connect to WiFi
   Serial.print("Connecting to WiFi");
@@ -182,8 +176,7 @@ void setup() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println();
-    Serial.println("WiFi connected!");
+    Serial.println("\nWiFi connected!");
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
@@ -200,8 +193,7 @@ void setup() {
     tft.println("Getting Time...");
     delay(1000);
   } else {
-    Serial.println();
-    Serial.println("WiFi connection failed. Using default values.");
+    Serial.println("\nWiFi connection failed. Using default values.");
 
     // Display status on screen
     tft.fillScreen(PIP_BLACK);
@@ -232,145 +224,95 @@ void setup() {
     if (savedMode >= 0 && savedMode < MODE_TOTAL) {
       currentMode = savedMode;
 
-      // Apply the saved theme based on ID
-      const char* themePrefix = "ironman";  // Default
+      // Special case: if we're in Pip-Boy mode, set the appropriate theme
+      if (savedMode == MODE_PIPBOY) {
+        // Force the Pip-Boy theme (green)
+        modeColors[0] = { 0, 255, 50, 0x07E0 };  // Green digital (not used in Pip-Boy but set for consistency)
+        modeColors[1] = { 0, 255, 50, 0x07E0 };  // Green analog (not used in Pip-Boy but set for consistency)
+        modeColors[2] = { 0, 255, 50, 0x07E0 };  // Green for Pip-Boy mode
+        Serial.println("Applying saved Pip-Boy mode and theme");
+      } else {
+        // For Arc Reactor modes, apply the saved theme based on ID
+        const char* themePrefix = "ironman";  // Default
 
-      switch (savedThemeID) {
-        case THEME_ID_IRONMAN:
-          themePrefix = "ironman";
-          // Set Iron Man theme colors
-          modeColors[0] = { 0, 20, 255, 0x051F };  // Blue digital
-          modeColors[1] = { 0, 20, 255, 0x051F };  // Blue analog
-          break;
-        case THEME_ID_HULK:
-          themePrefix = "hulk";
-          // Set Hulk theme colors
-          modeColors[0] = { 0, 255, 50, 0x07E0 };  // Green digital
-          modeColors[1] = { 0, 255, 50, 0x07E0 };  // Green analog
-          break;
-        case THEME_ID_CAPTAIN:
-          themePrefix = "captain";
-          // Set Captain America theme colors
-          modeColors[0] = { 0, 50, 255, 0x037F };  // Blue digital
-          modeColors[1] = { 0, 50, 255, 0x037F };  // Blue analog
-          break;
-        case THEME_ID_THOR:
-          themePrefix = "thor";
-          // Set Thor theme colors
-          modeColors[0] = { 255, 255, 0, 0xFFE0 };  // Yellow digital
-          modeColors[1] = { 255, 255, 0, 0xFFE0 };  // Yellow analog
-          break;
-        case THEME_ID_BLACK_WIDOW:
-          themePrefix = "widow";
-          // Set Black Widow theme colors
-          modeColors[0] = { 255, 0, 0, 0xF800 };  // Red digital
-          modeColors[1] = { 255, 0, 0, 0xF800 };  // Red analog
-          break;
-        case THEME_ID_SPIDERMAN:
-          themePrefix = "spiderman";
-          // Set Spiderman theme colors
-          modeColors[0] = { 255, 0, 0, 0xF800 };  // Red digital
-          modeColors[1] = { 255, 0, 0, 0xF800 };  // Red analog
-          break;
-      }
-
-      // Apply the theme settings
-      Serial.print("Applying saved theme: ");
-      Serial.println(themePrefix);
-
-      // Update the LED colors to match the saved theme
-      updateLEDs();
-
-      // After loading the saved theme and mode, add this to find a matching image
-      if ((currentMode == MODE_ARC_DIGITAL || currentMode == MODE_ARC_ANALOG) && numArcImages > 0) {
-        // Get theme prefix based on saved theme ID
-        String themePrefix = "ironman";  // Default
-        int savedThemeID = EEPROM.readInt(THEME_ADDRESS);
-
-        // Map theme ID to prefix
         switch (savedThemeID) {
-          case THEME_ID_IRONMAN: themePrefix = "ironman"; break;
-          case THEME_ID_HULK: themePrefix = "hulk"; break;
-          case THEME_ID_CAPTAIN: themePrefix = "captain"; break;
-          case THEME_ID_THOR: themePrefix = "thor"; break;
-          case THEME_ID_BLACK_WIDOW: themePrefix = "widow"; break;
-          case THEME_ID_SPIDERMAN: themePrefix = "spiderman"; break;
+          case THEME_ID_IRONMAN:
+            themePrefix = "ironman";
+            modeColors[0] = { 0, 20, 255, 0x051F };  // Blue digital
+            modeColors[1] = { 0, 20, 255, 0x051F };  // Blue analog
+            break;
+          case THEME_ID_HULK:
+            themePrefix = "hulk";
+            modeColors[0] = { 0, 255, 50, 0x07E0 };  // Green digital
+            modeColors[1] = { 0, 255, 50, 0x07E0 };  // Green analog
+            break;
+          case THEME_ID_CAPTAIN:
+            themePrefix = "captain";
+            modeColors[0] = { 0, 50, 255, 0x037F };  // Blue digital
+            modeColors[1] = { 0, 50, 255, 0x037F };  // Blue analog
+            break;
+          case THEME_ID_THOR:
+            themePrefix = "thor";
+            modeColors[0] = { 255, 255, 0, 0xFFE0 };  // Yellow digital
+            modeColors[1] = { 255, 255, 0, 0xFFE0 };  // Yellow analog
+            break;
+          case THEME_ID_BLACK_WIDOW:
+            themePrefix = "widow";
+            modeColors[0] = { 255, 0, 0, 0xF800 };  // Red digital
+            modeColors[1] = { 255, 0, 0, 0xF800 };  // Red analog
+            break;
+          case THEME_ID_SPIDERMAN:
+            themePrefix = "spiderman";
+            modeColors[0] = { 255, 0, 0, 0xF800 };  // Red digital
+            modeColors[1] = { 255, 0, 0, 0xF800 };  // Red analog
+            break;
         }
 
-        Serial.print("Looking for images matching theme: ");
+        // Apply the theme settings
+        Serial.print("Applying saved theme: ");
         Serial.println(themePrefix);
 
-        // Check all available images for a match
-        themePrefix.toLowerCase();  // Convert to lowercase for comparison
-        String matchingImage = "";
+        // Find matching image for the theme if in Arc Reactor modes
+        if ((currentMode == MODE_ARC_DIGITAL || currentMode == MODE_ARC_ANALOG) && numArcImages > 0) {
+          // Look for matching image
+          String matchingImage = "";
 
-        // Debug info - print all available images
-        Serial.println("Available images:");
-        for (int i = 0; i < numArcImages; i++) {
-          Serial.print("  ");
-          Serial.println(arcReactorImages[i]);
-        }
+          for (int i = 0; i < numArcImages; i++) {
+            String imageName = arcReactorImages[i];
+            // Extract filename without path and convert to lowercase
+            int lastSlash = imageName.lastIndexOf('/');
+            if (lastSlash >= 0) {
+              imageName = imageName.substring(lastSlash + 1);
+            }
+            String lowerImageName = imageName;
+            lowerImageName.toLowerCase();
 
-        // Now look for a matching image
-        for (int i = 0; i < numArcImages; i++) {
-          String imageName = arcReactorImages[i];
-          // Extract just the filename without path
-          int lastSlash = imageName.lastIndexOf('/');
-          if (lastSlash >= 0) {
-            imageName = imageName.substring(lastSlash + 1);
+            // Check if image matches theme
+            if (lowerImageName.indexOf(themePrefix) >= 0) {
+              matchingImage = arcReactorImages[i];
+              Serial.print("Found matching image: ");
+              Serial.println(matchingImage);
+              break;
+            }
           }
 
-          // Convert to lowercase for case-insensitive comparison
-          String lowerImageName = imageName;
-          lowerImageName.toLowerCase();
-
-          Serial.print("Checking if ");
-          Serial.print(lowerImageName);
-          Serial.print(" contains ");
-          Serial.println(themePrefix);
-
-          // Check if this image matches our theme
-          if (lowerImageName.indexOf(themePrefix) >= 0) {
-            matchingImage = arcReactorImages[i];  // Use the full path from our array
-            Serial.print("Found matching image: ");
-            Serial.println(matchingImage);
-            break;
+          // Use matching image or fallback to first available
+          if (matchingImage.length() > 0) {
+            displayJPEG(matchingImage.c_str());
+          } else {
+            Serial.println("No matching theme image found, using first available");
+            displayJPEG(arcReactorImages[0].c_str());
           }
-        }
-
-        // Use the matching image or fallback to first available
-        if (matchingImage.length() > 0) {
-          Serial.print("Displaying theme image: ");
-          Serial.println(matchingImage);
-          displayJPEG(matchingImage.c_str());
-        } else {
-          Serial.println("No matching theme image found, using first available");
-          displayJPEG(arcReactorImages[0].c_str());
         }
       }
+
+      // Update the LED colors to match the saved theme/mode
+      updateLEDs();
     }
   }
 
   // Draw initial interface based on current mode
-  // This ensures the interface is fully drawn even if we loaded a saved theme
   switchMode(currentMode);
-}
-
-// Helper function to list files in SPIFFS
-void listSPIFFSFiles() {
-  File root = SPIFFS.open("/");
-  File file = root.openNextFile();
-
-  Serial.println("Files in SPIFFS:");
-  while (file) {
-    Serial.print("  ");
-    Serial.print(file.name());
-    Serial.print(" (");
-    Serial.print(file.size());
-    Serial.println(" bytes)");
-    file = root.openNextFile();
-  }
-  Serial.println("----------------------");
 }
 
 void loop() {
@@ -439,13 +381,29 @@ void loop() {
   }
 }
 
-// Improved displayJPEG function
+// Helper function to list files in SPIFFS
+void listSPIFFSFiles() {
+  File root = SPIFFS.open("/");
+  File file = root.openNextFile();
+
+  Serial.println("Files in SPIFFS:");
+  while (file) {
+    Serial.print("  ");
+    Serial.print(file.name());
+    Serial.print(" (");
+    Serial.print(file.size());
+    Serial.println(" bytes)");
+    file = root.openNextFile();
+  }
+  Serial.println("----------------------");
+}
+
+// Display JPEG image from SPIFFS
 bool displayJPEG(const char* filename) {
-  Serial.print("\n--- JPEG Display Attempt ---\n");
-  Serial.print("Trying to display: ");
+  Serial.print("\nDisplaying JPEG: ");
   Serial.println(filename);
 
-  // Always ensure we have a leading slash for SPIFFS
+  // Ensure we have a leading slash for SPIFFS
   String filePath = String(filename);
   if (!filePath.startsWith("/")) {
     filePath = "/" + filePath;
@@ -457,47 +415,34 @@ bool displayJPEG(const char* filename) {
     return false;
   }
 
-  Serial.print("File exists, opening: ");
-  Serial.println(filename);
-
-  // Extract just the filename part for theme detection (keep your existing code)
-  String fullPath = filePath;
-  String justFilename = fullPath;
-  int lastSlash = fullPath.lastIndexOf('/');
-  if (lastSlash >= 0 && lastSlash < fullPath.length() - 1) {
-    justFilename = fullPath.substring(lastSlash + 1);
+  // Extract filename for theme detection
+  String justFilename = filePath;
+  int lastSlash = filePath.lastIndexOf('/');
+  if (lastSlash >= 0 && lastSlash < filePath.length() - 1) {
+    justFilename = filePath.substring(lastSlash + 1);
   }
-
-  Serial.print("Extracted filename for theme: ");
-  Serial.println(justFilename);
 
   // Set the theme based on the filename
   setThemeFromFilename(justFilename.c_str());
 
-  // Save the current theme selection to EEPROM is now handled in setThemeFromFilename
-
-  File jpegFile = SPIFFS.open(filename, "r");
+  // Read JPEG file into buffer
+  File jpegFile = SPIFFS.open(filePath.c_str(), "r");
   if (!jpegFile) {
-    Serial.println("ERROR: Failed to open JPEG file despite it existing");
+    Serial.println("ERROR: Failed to open JPEG file");
     return false;
   }
 
-  // Get file size
   size_t fileSize = jpegFile.size();
-  Serial.print("File size: ");
-  Serial.print(fileSize);
-  Serial.println(" bytes");
-
   if (fileSize == 0) {
-    Serial.println("ERROR: File is empty (0 bytes)");
+    Serial.println("ERROR: File is empty");
     jpegFile.close();
     return false;
   }
 
-  // Use the TJpgDec library to decode and display the JPEG
+  // Allocate buffer and read file
   uint8_t* jpegBuffer = (uint8_t*)malloc(fileSize);
   if (!jpegBuffer) {
-    Serial.println("ERROR: Failed to allocate memory for JPEG");
+    Serial.println("ERROR: Failed to allocate memory");
     jpegFile.close();
     return false;
   }
@@ -505,35 +450,26 @@ bool displayJPEG(const char* filename) {
   size_t bytesRead = jpegFile.read(jpegBuffer, fileSize);
   jpegFile.close();
 
-  Serial.print("Bytes read: ");
-  Serial.print(bytesRead);
-  Serial.print(" of ");
-  Serial.println(fileSize);
-
   if (bytesRead != fileSize) {
     Serial.println("ERROR: Failed to read entire file");
     free(jpegBuffer);
     return false;
   }
 
-  // Decode and render the JPEG
-  Serial.println("Decoding and displaying JPEG...");
+  // Decode and display
   bool success = TJpgDec.drawJpg(0, 0, jpegBuffer, fileSize);
+  free(jpegBuffer);
 
   if (!success) {
-    Serial.println("ERROR: TJpgDec.drawJpg failed to decode the image");
+    Serial.println("ERROR: Failed to decode JPEG");
   } else {
-    Serial.println("JPEG decoded and displayed successfully!");
-    saveCurrentThemeAndMode();
+    Serial.println("JPEG displayed successfully");
   }
 
-  saveCurrentThemeAndMode();
-
-  // Free the buffer
-  free(jpegBuffer);
   return success;
 }
 
+// Check for image files in SPIFFS
 void checkForImageFiles() {
   File root = SPIFFS.open("/");
   File file = root.openNextFile();
@@ -548,12 +484,12 @@ void checkForImageFiles() {
     if (!fileName.startsWith("/")) {
       fileName = "/" + fileName;
     }
-    
+
     // Check if this is a JPEG file
     if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
       arcReactorImages[numArcImages] = fileName;
 
-      // Extract just the filename without path for display
+      // Extract filename for display and theme detection
       String justName = fileName;
       int lastSlash = fileName.lastIndexOf('/');
       if (lastSlash >= 0 && lastSlash < fileName.length() - 1) {
@@ -561,13 +497,14 @@ void checkForImageFiles() {
       }
       justName.toLowerCase();
 
-      // Determine and report theme
+      // Determine theme
       String theme = "Default";
       if (justName.startsWith(THEME_IRONMAN)) theme = "Iron Man (Blue/Red)";
       else if (justName.startsWith(THEME_HULK)) theme = "Hulk (Green)";
       else if (justName.startsWith(THEME_CAPTAIN)) theme = "Captain America (Blue/Red)";
       else if (justName.startsWith(THEME_THOR)) theme = "Thor (Cyan/Yellow)";
       else if (justName.startsWith(THEME_BLACK_WIDOW)) theme = "Black Widow (Red)";
+      else if (justName.startsWith(THEME_SPIDERMAN)) theme = "Spiderman (Red)";
 
       // Log file with theme
       Serial.print(numArcImages + 1);
@@ -593,6 +530,7 @@ void checkForImageFiles() {
   }
 }
 
+// Check for button press to switch modes
 void checkButtonPress() {
   // Check if button is pressed (will be LOW because of INPUT_PULLUP)
   if (digitalRead(BUTTON_PIN) == LOW) {
@@ -606,84 +544,21 @@ void checkButtonPress() {
       // Switch to the new mode
       switchMode(currentMode);
 
-      saveCurrentThemeAndMode();
-
       // Flash LEDs to indicate mode change
       flashEffect();
-
-      // Save the current theme and mode
-      saveCurrentThemeAndMode();
 
       lastButtonPress = millis();
     }
   }
 }
 
-// Find an image file matching the specified theme prefix
-String findImageForTheme(const char* themePrefix) {
-  String prefix = String(themePrefix);
-  prefix.toLowerCase();
-
-  for (int i = 0; i < numArcImages; i++) {
-    String fileName = arcReactorImages[i];
-    String baseName = fileName;
-
-    // Extract just the filename without path
-    int lastSlash = fileName.lastIndexOf('/');
-    if (lastSlash >= 0 && lastSlash < fileName.length() - 1) {
-      baseName = fileName.substring(lastSlash + 1);
-    }
-
-    baseName.toLowerCase();
-
-    if (baseName.indexOf(prefix) >= 0) {
-      return fileName;  // Return the full path
-    }
-  }
-
-  return "";  // No matching image found
-}
-
-String getImagePathForTheme(String themeName) {
-  // Convert theme name to lowercase for consistent matching
-  themeName.toLowerCase();
-
-  // Check all available images for a match with this theme
-  for (int i = 0; i < numArcImages; i++) {
-    String imagePath = arcReactorImages[i];
-    String justFileName = imagePath;
-
-    // Extract just the filename without path
-    int lastSlash = imagePath.lastIndexOf('/');
-    if (lastSlash >= 0 && lastSlash < imagePath.length() - 1) {
-      justFileName = imagePath.substring(lastSlash + 1);
-    }
-
-    // Convert to lowercase
-    justFileName.toLowerCase();
-
-    // Check if this image matches the theme
-    if (justFileName.startsWith(themeName)) {
-      Serial.print("Found matching image for theme: ");
-      Serial.print(themeName);
-      Serial.print(" -> ");
-      Serial.println(imagePath);
-      return imagePath;
-    }
-  }
-
-  // No matching image found
-  Serial.print("No matching image found for theme: ");
-  Serial.println(themeName);
-  return "";
-}
-
+// Switch to a different clock mode
 void switchMode(int mode) {
   // Store old mode
   int oldMode = currentMode;
 
   // If switching away from Pip-Boy mode, clean up GIF resources
-  if (currentMode == MODE_PIPBOY) {
+  if (oldMode == MODE_PIPBOY) {
     cleanupPipBoyMode();
   }
 
@@ -719,28 +594,50 @@ void switchMode(int mode) {
         // Fallback to drawing if no images available
         drawArcReactorBackground();
       }
+      initAnalogClock();
       drawAnalogClock();
       break;
 
     case MODE_PIPBOY:
-      // Pip-Boy interface
+      // Pip-Boy interface - directly draw the interface without trying to load JPEG
       drawPipBoyInterface();
+
+      // Set theme for Pip-Boy - explicitly set all mode colors for consistency
+      modeColors[0] = { 0, 255, 50, 0x07E0 };  // Green digital
+      modeColors[1] = { 0, 255, 50, 0x07E0 };  // Green analog
+      modeColors[2] = { 0, 255, 50, 0x07E0 };  // Green for Pip-Boy mode
+
+      // Explicitly save the Pip-Boy mode and theme right away to ensure persistence
+      EEPROM.writeInt(THEME_ADDRESS, THEME_ID_PIPBOY);
+      EEPROM.writeInt(MODE_ADDRESS, MODE_PIPBOY);
+      EEPROM.writeUChar(VALID_FLAG_ADDRESS, VALID_SETTINGS_FLAG);
+      EEPROM.commit();
+
+      Serial.println("Pip-Boy mode activated and saved to EEPROM");
       break;
   }
 
   // Update LEDs to match the new mode/theme
   updateLEDs();
 
-  // If mode changed, save the setting
-  if (oldMode != currentMode) {
-    saveCurrentTheme(getCurrentThemeName().c_str(), currentMode);
+  // If mode changed and we're not in Pip-Boy mode (already saved above),
+  // save the settings to EEPROM
+  if (oldMode != currentMode && currentMode != MODE_PIPBOY) {
+    saveCurrentThemeAndMode();
   }
 }
 
 // Save current theme and mode to EEPROM
 void saveCurrentThemeAndMode(int themeID) {
-  // If no theme ID is provided, try to determine it from colors
-  if (themeID == THEME_ID_DEFAULT) {
+  // Special handling for Pip-Boy mode
+  if (currentMode == MODE_PIPBOY) {
+    themeID = THEME_ID_PIPBOY;  // Use dedicated Pip-Boy theme ID
+
+    Serial.print("Saving Pip-Boy mode with theme ID: ");
+    Serial.println(themeID);
+  }
+  // If no theme ID is provided and not in Pip-Boy mode, try to determine it from colors
+  else if (themeID == THEME_ID_DEFAULT) {
     // Determine which theme is active based on colors
     if (modeColors[0].r == 0 && modeColors[0].g == 20 && modeColors[0].b == 255) {
       themeID = THEME_ID_IRONMAN;  // Iron Man (blue)
@@ -752,7 +649,7 @@ void saveCurrentThemeAndMode(int themeID) {
       themeID = THEME_ID_THOR;  // Thor (yellow)
     } else if (modeColors[0].r == 255 && modeColors[0].g == 0 && modeColors[0].b == 0) {
       // Could be Black Widow or Spiderman, both are red
-      // Let's just use Black Widow for simplicity
+      // Use Black Widow for simplicity
       themeID = THEME_ID_BLACK_WIDOW;
     }
   }
@@ -762,126 +659,9 @@ void saveCurrentThemeAndMode(int themeID) {
   Serial.print(", Mode: ");
   Serial.println(currentMode);
 
-  // Write the values to EEPROM
+  // Write values to EEPROM
   EEPROM.writeInt(THEME_ADDRESS, themeID);
   EEPROM.writeInt(MODE_ADDRESS, currentMode);
   EEPROM.writeUChar(VALID_FLAG_ADDRESS, VALID_SETTINGS_FLAG);
-
-  // Commit the changes
   EEPROM.commit();
-}
-
-// Add this function definition to your main .ino file
-void setThemeFromFilename(const char* filename) {
-  // Create a debug message showing exactly what filename we're checking
-  Serial.print("Setting theme from filename: ");
-  Serial.println(filename);
-
-  // Create a clean version of the filename (lowercase, no path)
-  String fname = String(filename);
-  fname.toLowerCase();
-
-  // Remove leading slash if present
-  if (fname.startsWith("/")) {
-    fname = fname.substring(1);
-  }
-
-  // Debug the cleaned filename
-  Serial.print("Cleaned filename for theme check: ");
-  Serial.println(fname);
-
-  // Default is blue theme for both modes
-  // Apply default theme first
-  modeColors[0] = { 0, 20, 255, 0x051F };  // Blue digital
-  modeColors[1] = { 0, 20, 255, 0x051F };  // Blue analog
-
-  // Let's do more explicit theme debugging
-  if (fname.indexOf(THEME_IRONMAN) >= 0) {
-    // Iron Man theme - Blue for both
-    modeColors[0] = { 0, 20, 255, 0x051F };  // Blue digital
-    modeColors[1] = { 0, 20, 255, 0x051F };  // Blue analog (matching digital)
-    Serial.println("→ Matched Iron Man theme (blue)");
-    saveCurrentThemeAndMode(THEME_ID_IRONMAN);
-  } else if (fname.indexOf(THEME_HULK) >= 0) {
-    // Hulk theme - Green for both
-    modeColors[0] = { 0, 255, 50, 0x07E0 };  // Green digital
-    modeColors[1] = { 0, 255, 50, 0x07E0 };  // Green analog
-    Serial.println("→ Matched Hulk theme (green)");
-    saveCurrentThemeAndMode(THEME_ID_HULK);
-  } else if (fname.indexOf(THEME_CAPTAIN) >= 0) {
-    // Captain America theme - Blue for both
-    modeColors[0] = { 0, 50, 255, 0x037F };  // Blue digital
-    modeColors[1] = { 0, 50, 255, 0x037F };  // Blue analog (matching digital)
-    Serial.println("→ Matched Captain America theme (blue)");
-    saveCurrentThemeAndMode(THEME_ID_CAPTAIN);
-  } else if (fname.indexOf(THEME_THOR) >= 0) {
-    // Thor theme - Yellow for both
-    modeColors[0] = { 255, 255, 0, 0xFFE0 };  // Yellow digital
-    modeColors[1] = { 255, 255, 0, 0xFFE0 };  // Yellow analog
-    Serial.println("→ Matched Thor theme (yellow)");
-    saveCurrentThemeAndMode(THEME_ID_THOR);
-  } else if (fname.indexOf(THEME_BLACK_WIDOW) >= 0) {
-    // Black Widow theme - Red for both
-    modeColors[0] = { 255, 0, 0, 0xF800 };  // Red digital
-    modeColors[1] = { 255, 0, 0, 0xF800 };  // Red analog
-    Serial.println("→ Matched Black Widow theme (red)");
-    saveCurrentThemeAndMode(THEME_ID_BLACK_WIDOW);
-  } else if (fname.indexOf(THEME_SPIDERMAN) >= 0) {
-    // Spiderman theme - Red for both
-    modeColors[0] = { 255, 0, 0, 0xF800 };  // Red digital
-    modeColors[1] = { 255, 0, 0, 0xF800 };  // Red analog
-    Serial.println("→ Matched Spiderman theme (red)");
-    saveCurrentThemeAndMode(THEME_ID_SPIDERMAN);
-  } else {
-    // No theme matched, use default
-    Serial.println("→ No specific theme matched, using default (blue)");
-    saveCurrentThemeAndMode(THEME_ID_DEFAULT);
-  }
-
-  // Print the selected colors for debugging
-  Serial.print("Selected colors - Digital: RGB(");
-  Serial.print(modeColors[0].r);
-  Serial.print(",");
-  Serial.print(modeColors[0].g);
-  Serial.print(",");
-  Serial.print(modeColors[0].b);
-  Serial.print("), Analog: RGB(");
-  Serial.print(modeColors[1].r);
-  Serial.print(",");
-  Serial.print(modeColors[1].g);
-  Serial.print(",");
-  Serial.print(modeColors[1].b);
-  Serial.println(")");
-
-  // Update the LED colors immediately
-  updateLEDs();
-}
-
-void listAllFilesWithDetails() {
-  Serial.println("\n----- COMPLETE SPIFFS FILE LISTING -----");
-  File root = SPIFFS.open("/");
-  File file = root.openNextFile();
-
-  while (file) {
-    String fileName = file.name();
-    Serial.print("File: \"");
-    Serial.print(fileName);
-    Serial.print("\" Size: ");
-    Serial.print(file.size());
-    Serial.print(" bytes, Exists check: ");
-    Serial.println(SPIFFS.exists(fileName) ? "YES" : "NO");
-
-    // Also check with and without slash
-    String withoutSlash = fileName;
-    if (withoutSlash.startsWith("/")) {
-      withoutSlash = withoutSlash.substring(1);
-      Serial.print("  Without slash: \"");
-      Serial.print(withoutSlash);
-      Serial.print("\" Exists check: ");
-      Serial.println(SPIFFS.exists(withoutSlash.c_str()) ? "YES" : "NO");
-    }
-
-    file = root.openNextFile();
-  }
-  Serial.println("-----------------------------------------");
 }

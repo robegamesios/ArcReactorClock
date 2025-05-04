@@ -182,7 +182,7 @@ void drawPipBoyInterface() {
   tft.println("ROBCO IND");
 }
 
-// Function to update the GIF animation (call this in the main loop)
+// Function to update the GIF animation
 void updatePipBoyGif() {
   // Check if GIF exists and is loaded
   if (gifBuffer != NULL && gifSize > 0) {

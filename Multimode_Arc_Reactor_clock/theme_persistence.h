@@ -9,14 +9,13 @@
 #include <EEPROM.h>
 #include <Arduino.h>
 
-// Forward declare constants so we don't have circular dependencies
+// Forward declare constants to avoid circular dependencies
 extern const char* THEME_IRONMAN;
 extern const char* THEME_HULK;
 extern const char* THEME_CAPTAIN;
 extern const char* THEME_THOR;
 extern const char* THEME_BLACK_WIDOW;
 extern const char* THEME_SPIDERMAN;
-extern const int MODE_TOTAL;
 
 // EEPROM storage locations
 #define EEPROM_SIZE 16            // Total EEPROM size to use
@@ -61,23 +60,6 @@ void saveCurrentTheme(const char* themeName, int currentMode) {
   Serial.println("Theme saved to EEPROM");
 }
 
-// Get the theme name that matches the saved hash
-String loadSavedThemeName() {
-  // Check if we have valid settings
-  if (EEPROM.readUChar(EEPROM_SIZE - 1) != VALID_SETTINGS_FLAG) {
-    Serial.println("No valid theme settings found in EEPROM");
-    return "";  // Return empty string if no valid settings
-  }
-
-  // Read the theme hash
-  uint32_t savedHash = EEPROM.readUInt(THEME_ADDRESS);
-
-  // This function will be implemented after all theme names are defined
-  // We'll return an empty string for now
-  Serial.println("Theme hash loaded, waiting for theme names to be defined");
-  return "";  // Will be implemented in main sketch after theme names are defined
-}
-
 // Calculate hash for a theme name (helper function)
 uint32_t calculateThemeHash(const char* themeName) {
   uint32_t hash = 0;
@@ -110,7 +92,7 @@ int loadSavedMode() {
   // Read the saved mode
   int savedMode = EEPROM.readUInt(MODE_ADDRESS);
 
-  // Validate the mode (MODE_TOTAL will be checked in main sketch)
+  // Validate the mode
   if (savedMode < 0) {
     Serial.println("Invalid saved mode, using default");
     return 0;
