@@ -2,7 +2,7 @@
  * led_controls.h - Functions for controlling the LED ring
  * For Multi-Mode Digital Clock project
  * 
- * REVISED VERSION - Simplified LED functions
+ * REVISED VERSION - Allows custom LED colors for all modes
  */
 
 #ifndef LED_CONTROLS_H
@@ -24,27 +24,14 @@ extern int led_ring_brightness;
 extern int led_ring_brightness_flash;
 
 // Function declarations for LED control
-void greenLight();
-void blueLight();
-void flashEffect();
 void updateLEDs();
+void flashEffect();
 
-// LED ring functions
-void greenLight() {
+// Update LED ring based on current settings
+void updateLEDs() {
   pixels.setBrightness(led_ring_brightness);
-  // Always use green for Pip-Boy mode
-  for (int i = 0; i < pixels.numPixels(); i++) {
-    pixels.setPixelColor(i, pixels.Color(
-                              ledColors[COLOR_GREEN].r,
-                              ledColors[COLOR_GREEN].g,
-                              ledColors[COLOR_GREEN].b));
-  }
-  pixels.show();
-}
 
-void blueLight() {
-  pixels.setBrightness(led_ring_brightness);
-  // Use the user-selected color
+  // Use the user-selected color for all modes
   for (int i = 0; i < pixels.numPixels(); i++) {
     pixels.setPixelColor(i, pixels.Color(
                               ledColors[currentLedColor].r,
@@ -71,20 +58,6 @@ void flashEffect() {
 
   // Return to appropriate color for current mode
   updateLEDs();
-}
-
-void updateLEDs() {
-  // Set colors based on current mode
-  switch (currentMode) {
-    case 0:  // MODE_ARC_DIGITAL
-    case 1:  // MODE_ARC_ANALOG
-      blueLight();
-      break;
-
-    case 2:  // MODE_PIPBOY
-      greenLight();
-      break;
-  }
 }
 
 #endif  // LED_CONTROLS_H

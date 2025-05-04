@@ -342,7 +342,7 @@ void checkButtonPress() {
   if (digitalRead(CLR_BUTTON_PIN) == LOW) {
     if (millis() - lastClrButtonPress > debounceDelay) {
       cycleLedColor();
-      updateLEDs();
+      updateLEDs();  // Immediately update LEDs to show new color
       saveSettings();
       lastClrButtonPress = millis();
     }

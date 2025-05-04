@@ -2,7 +2,7 @@
  * theme_manager.h - Simplified theme management system
  * For Multi-Mode Digital Clock project
  * 
- * REVISED VERSION - Removed modeColors array and automatic theme detection
+ * REVISED VERSION - Allows custom LED colors for all modes
  */
 
 #ifndef THEME_MANAGER_H
@@ -70,7 +70,7 @@ void updateModeColorsFromLedColor(int colorIndex) {
   if (colorIndex < 0 || colorIndex >= COLOR_TOTAL) {
     colorIndex = COLOR_BLUE;  // Default to blue if invalid
   }
-  
+
   currentLedColor = colorIndex;
 }
 
@@ -82,10 +82,11 @@ void cycleLedColor() {
 
 // Get the current second ring color based on mode
 uint16_t getCurrentSecondRingColor() {
-  // For Pip-Boy mode, always use green
+  // For Pip-Boy mode, we'll still use green for the SCREEN elements
+  // (since green is characteristic of the Pip-Boy interface)
   if (currentMode == MODE_PIPBOY) {
     return ledColors[COLOR_GREEN].tft_color;
-  } 
+  }
   // For other modes, use the current user-selected LED color
   else {
     return ledColors[currentLedColor].tft_color;
