@@ -17,6 +17,9 @@ int prevHours = -1, prevMinutes = -1, prevSeconds = -1; // Track previous time v
 bool prevColonState = false;                           // Track previous colon state
 bool showColon = true;                                 // For blinking colon
 
+// Define a constant for the background image to use
+const char* DEFAULT_BACKGROUND = "/ironman00.jpg";
+
 // Iron Man color scheme
 #define IRONMAN_RED 0xF800    // Bright red for the solid ring
 #define IRONMAN_GOLD 0xFD20   // Gold color for the outer circle
@@ -31,7 +34,7 @@ bool showColon = true;                                 // For blinking colon
 // 0 = Center of screen (default)
 // -80 = Near top of screen
 // 80 = Near bottom of screen
-#define CLOCK_VERTICAL_OFFSET -80
+#define CLOCK_VERTICAL_OFFSET 80
 
 // Callback function for the TJpg_Decoder
 bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap)
@@ -50,40 +53,156 @@ void updateArcDigitalColon();
 void resetArcDigitalVariables();
 bool displayJPEGBackground(const char* filename);
 
-// Function to display a JPEG from SPIFFS as background
 bool displayJPEGBackground(const char* filename) {
+  // Add detailed debugging
+  Serial.print("\n--- JPEG Background Display Attempt ---\n");
+  Serial.print("Trying to display: ");
+  Serial.println(filename);
+
   // Check if file exists
   if (!SPIFFS.exists(filename)) {
-    Serial.print("JPEG file not found: ");
+    Serial.print("ERROR: JPEG file not found: ");
     Serial.println(filename);
     return false;
   }
   
-  Serial.print("Displaying JPEG: ");
+  Serial.print("File exists, attempting to display: ");
   Serial.println(filename);
   
-  // Open the file
-  File jpegFile = SPIFFS.open(filename, "r");
-  if (!jpegFile) {
-    Serial.println("Failed to open JPEG file");
-    return false;
+  // Extract filename for theme detection
+  String fullPath = String(filename);
+  String justFilename = fullPath;
+  int lastSlash = fullPath.lastIndexOf('/');
+  if (lastSlash >= 0 && lastSlash < fullPath.length() - 1) {
+    justFilename = fullPath.substring(lastSlash + 1);
   }
   
-  // Use TJpg_Decoder to decode and display the JPEG
-  bool decoded = TJpgDec.drawFsJpg(0, 0, filename);
-  jpegFile.close();
+  Serial.print("Filename for theme: ");
+  Serial.println(justFilename);
   
-  return decoded;
+  // Set theme based on filename
+  setThemeFromFilename(justFilename.c_str());
+  
+  // Method 1: Try direct SPIFFS drawing
+  Serial.println("Attempting Method 1: TJpg_Decoder.drawFsJpg...");
+  bool decoded = TJpgDec.drawFsJpg(0, 0, filename);
+  
+  if (decoded) {
+    Serial.println("SUCCESS: JPEG decoded and displayed!");
+    return true;
+  } else {
+    Serial.println("Method 1 FAILED. Trying Method 2 (buffer method)...");
+    
+    // Method 2: Try buffer method if direct method failed
+    File jpegFile = SPIFFS.open(filename, "r");
+    if (!jpegFile) {
+      Serial.println("ERROR: Failed to open JPEG file");
+      return false;
+    }
+    
+    // Get file size
+    size_t fileSize = jpegFile.size();
+    Serial.print("File size: ");
+    Serial.print(fileSize);
+    Serial.println(" bytes");
+    
+    if (fileSize == 0) {
+      Serial.println("ERROR: File is empty");
+      jpegFile.close();
+      return false;
+    }
+    
+    // Allocate buffer for the JPEG
+    uint8_t* jpegBuffer = (uint8_t*)malloc(fileSize);
+    if (!jpegBuffer) {
+      Serial.println("ERROR: Failed to allocate memory");
+      jpegFile.close();
+      return false;
+    }
+    
+    // Read file into buffer
+    size_t bytesRead = jpegFile.read(jpegBuffer, fileSize);
+    jpegFile.close();
+    
+    if (bytesRead != fileSize) {
+      Serial.print("ERROR: Read only ");
+      Serial.print(bytesRead);
+      Serial.print(" of ");
+      Serial.print(fileSize);
+      Serial.println(" bytes");
+      free(jpegBuffer);
+      return false;
+    }
+    
+    // Try to decode from buffer
+    bool bufferDecoded = TJpgDec.drawJpg(0, 0, jpegBuffer, fileSize);
+    free(jpegBuffer);
+    
+    if (bufferDecoded) {
+      Serial.println("SUCCESS: JPEG decoded and displayed using buffer method!");
+      return true;
+    } else {
+      Serial.println("ERROR: All JPEG decoding methods failed");
+      return false;
+    }
+  }
 }
 
-// Draw Arc Reactor background for both digital and analog modes
 void drawArcReactorBackground() {
   // Clear the display
   tft.fillScreen(TFT_BLACK);
   
-  // Try to load JPEG background from SPIFFS
-  if (!displayJPEGBackground("/hulk00.jpg")) {
-    // Fallback to drawing if JPEG loading fails
+  // Get the filename for theme detection, regardless of whether the image loads
+  String filename = DEFAULT_BACKGROUND;  // Use the constant rather than hardcoding
+  String justName = filename;
+  int lastSlash = filename.lastIndexOf('/');
+  if (lastSlash >= 0) {
+    justName = filename.substring(lastSlash + 1);
+  }
+  
+  // Extract just the filename without extension
+  int lastDot = justName.lastIndexOf('.');
+  if (lastDot > 0) {
+    justName = justName.substring(0, lastDot);
+  }
+  
+  // Set the theme based on the filename first, before attempting to load the image
+  Serial.print("Setting theme based on filename: ");
+  Serial.println(justName);
+  
+  // Convert to lowercase for comparison
+  justName.toLowerCase();
+  
+  // Set theme based on filename prefix
+  if (justName.startsWith("hulk")) {
+    Serial.println("Using Hulk theme (green)");
+    modeColors[0] = { 0, 255, 50, 0x07E0 };  // Green digital
+    modeColors[1] = { 0, 255, 50, 0x07E0 };  // Green analog
+  } else if (justName.startsWith("ironman")) {
+    Serial.println("Using Iron Man theme (blue)");
+    modeColors[0] = { 0, 20, 255, 0x051F };  // Blue digital
+    modeColors[1] = { 0, 20, 255, 0x051F };  // Blue analog
+  } else if (justName.startsWith("spiderman")) {
+    Serial.println("Using Captain America theme (red)");
+    modeColors[0] = { 255, 0, 0, 0xF800 };   // Red digital
+    modeColors[1] = { 255, 0, 0, 0xF800 };   // Red analog
+  } else if (justName.startsWith("thor")) {
+    Serial.println("Using Thor theme (yellow)");
+    modeColors[0] = { 255, 255, 0, 0xFFE0 }; // Yellow digital
+    modeColors[1] = { 255, 255, 0, 0xFFE0 }; // Yellow analog
+  } else if (justName.startsWith("widow")) {
+    Serial.println("Using Black Widow theme (red)");
+    modeColors[0] = { 255, 0, 0, 0xF800 };   // Red digital
+    modeColors[1] = { 255, 0, 0, 0xF800 };   // Red analog
+  } else {
+    Serial.println("No specific theme detected, using default");
+  }
+  
+  // Update LEDs to match the selected theme
+  updateLEDs();
+  
+  // Try to load JPEG background using the constant
+  if (!displayJPEGBackground(DEFAULT_BACKGROUND)) {
     Serial.println("No jpeg background found");
   }
   
