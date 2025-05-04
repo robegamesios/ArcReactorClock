@@ -1,6 +1,5 @@
 /*
  * Modified arc_digital.h - Arc Reactor Digital Clock Mode with JPEG Background
- * For Multi-Mode Digital Clock project
  */
 
 #ifndef ARC_DIGITAL_H
@@ -116,7 +115,7 @@ void updateDigitalTime() {
       
       // Draw text with semi-transparent background
       tft.setTextSize(2);
-      tft.setCursor(screenCenterX - 10, screenCenterY - 50);
+      tft.setCursor(screenCenterX - 10, screenCenterY - 40);
       tft.print(timeStr);
     }
 
@@ -166,9 +165,9 @@ void updateDigitalTime() {
         sprintf(timeStr, "%d", minutes);
       }
       
-      // Draw minutes text with semi-transparent background
+      // Draw minutes text with semi-transparent background - FIXED POSITION
       tft.setTextSize(4);
-      tft.setCursor(screenCenterX + 10, screenCenterY - 20);
+      tft.setCursor(screenCenterX + 15, screenCenterY - 20);
       tft.print(timeStr);
     }
     
@@ -186,7 +185,7 @@ void updateDigitalTime() {
       
       // Draw AM/PM indicator with semi-transparent background
       tft.setTextSize(2);
-      tft.setCursor(screenCenterX - 10, screenCenterY + 35);
+      tft.setCursor(screenCenterX - 10, screenCenterY + 20);
       if (isPM) {
         tft.println("PM");
       } else {

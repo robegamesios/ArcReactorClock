@@ -62,6 +62,7 @@ int hours = 12, minutes = 0, seconds = 0;
 int day = 1, month = 1, year = 2025;
 String dayOfWeek = "WEDNESDAY";
 bool is24Hour = false;  // Use 12-hour format by default
+bool needClockRefresh = false;
 
 // Mode variable
 int currentMode = MODE_ARC_DIGITAL;  // Start with Arc Reactor digital mode
@@ -78,8 +79,8 @@ void updatePipBoyGif();
 void checkForImageFiles();
 bool loadImageList();
 
-// Array to store available image filenames 
-String arcReactorImages[5]; // Up to 5 different Arc Reactor backgrounds
+// Array to store available image filenames
+String arcReactorImages[5];  // Up to 5 different Arc Reactor backgrounds
 int numArcImages = 0;
 
 void setup() {
@@ -141,9 +142,9 @@ void setup() {
   }
 
   // Initialize TJpg_Decoder
-  TJpgDec.setJpgScale(1);       // Set the jpeg scale (1, 2, 4, or 8)
-  TJpgDec.setSwapBytes(true);   // Set byte swap option if needed for your display
-  TJpgDec.setCallback(tft_output); // Set the callback function for rendering
+  TJpgDec.setJpgScale(1);           // Set the jpeg scale (1, 2, 4, or 8)
+  TJpgDec.setSwapBytes(true);       // Set byte swap option if needed for your display
+  TJpgDec.setCallback(tft_output);  // Set the callback function for rendering
 
   // Connect to WiFi
   Serial.print("Connecting to WiFi");
@@ -198,7 +199,7 @@ void setup() {
 void listSPIFFSFiles() {
   File root = SPIFFS.open("/");
   File file = root.openNextFile();
-  
+
   Serial.println("Files in SPIFFS:");
   while (file) {
     Serial.print("  ");
@@ -240,7 +241,17 @@ void loop() {
     if (timeUpdateNeeded) {
       lastTimeCheck = currentMillis;
       updateTimeAndDate();
-      updateAnalogClock();
+
+      // Check if full refresh is needed
+      if (needClockRefresh) {
+        // Reset the flag first to avoid loops
+        needClockRefresh = false;
+        // Call the case directly by reusing switchMode with the same mode
+        switchMode(MODE_ARC_ANALOG);
+      } else {
+        // Normal update if no refresh needed
+        updateAnalogClock();
+      }
     }
   } else if (currentMode == MODE_PIPBOY) {
     // Pip-Boy mode
@@ -271,12 +282,12 @@ void loop() {
 void checkForImageFiles() {
   File root = SPIFFS.open("/");
   File file = root.openNextFile();
-  
-  numArcImages = 0; // Reset counter
-  
-  while(file && numArcImages < 5) {
+
+  numArcImages = 0;  // Reset counter
+
+  while (file && numArcImages < 5) {
     String fileName = file.name();
-    
+
     // Check if this is a JPEG for Arc Reactor mode
     if (fileName.endsWith(".jpg") && fileName.indexOf("arc_reactor") >= 0) {
       arcReactorImages[numArcImages] = fileName;
@@ -284,10 +295,10 @@ void checkForImageFiles() {
       Serial.print("Found Arc Reactor image: ");
       Serial.println(fileName);
     }
-    
+
     file = root.openNextFile();
   }
-  
+
   if (numArcImages == 0) {
     Serial.println("No Arc Reactor JPEG images found in SPIFFS");
   } else {
@@ -302,16 +313,16 @@ bool displayJPEG(const char* filename) {
   if (SPIFFS.exists(filename)) {
     Serial.print("Displaying JPEG: ");
     Serial.println(filename);
-    
+
     File jpegFile = SPIFFS.open(filename, "r");
     if (!jpegFile) {
       Serial.println("Failed to open JPEG file");
       return false;
     }
-    
+
     // Get file size
     size_t fileSize = jpegFile.size();
-    
+
     // Use the TJpgDec library to decode and display the JPEG
     uint8_t* jpegBuffer = (uint8_t*)malloc(fileSize);
     if (!jpegBuffer) {
@@ -319,13 +330,13 @@ bool displayJPEG(const char* filename) {
       jpegFile.close();
       return false;
     }
-    
+
     jpegFile.read(jpegBuffer, fileSize);
     jpegFile.close();
-    
+
     // Decode and render the JPEG
     TJpgDec.drawJpg(0, 0, jpegBuffer, fileSize);
-    
+
     // Free the buffer
     free(jpegBuffer);
     return true;
@@ -386,7 +397,7 @@ void switchMode(int mode) {
       // Arc Reactor analog interface with JPEG background
       if (numArcImages > 0) {
         // Use the same or different image (for variety)
-        int imageIndex = (numArcImages > 1) ? 1 : 0; 
+        int imageIndex = (numArcImages > 1) ? 1 : 0;
         displayJPEG(arcReactorImages[imageIndex].c_str());
       } else {
         // Fallback to drawing if no images available
