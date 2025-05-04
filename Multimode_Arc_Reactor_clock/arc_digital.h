@@ -25,6 +25,14 @@ bool showColon = true;                                 // For blinking colon
 // Semi-transparent overlay - a very dark overlay that will still show JPEG details
 #define TEXT_BACKGROUND_COLOR 0x0001  // Nearly black but not solid
 
+// Vertical position adjustment
+// Change this value to move all clock elements:
+// Positive values move clock down, negative values move clock up
+// 0 = Center of screen (default)
+// -80 = Near top of screen
+// 80 = Near bottom of screen
+#define CLOCK_VERTICAL_OFFSET -80
+
 // Callback function for the TJpg_Decoder
 bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap)
 {
@@ -74,10 +82,14 @@ void drawArcReactorBackground() {
   tft.fillScreen(TFT_BLACK);
   
   // Try to load JPEG background from SPIFFS
-  if (!displayJPEGBackground("/ironman00.jpg")) {
+  if (!displayJPEGBackground("/hulk00.jpg")) {
     // Fallback to drawing if JPEG loading fails
     Serial.println("No jpeg background found");
   }
+  
+  // Print status info about vertical position
+  Serial.print("Clock vertical position offset: ");
+  Serial.println(CLOCK_VERTICAL_OFFSET);
 }
 
 // Reset variables to force redraw of digital clock
@@ -99,9 +111,9 @@ void updateDigitalTime() {
     
     // Handle seconds update - at the top for symmetry
     if (seconds != prevSeconds) {
-      // Position for seconds
+      // Position for seconds - apply vertical offset
       int secondsX = screenCenterX - 15;
-      int secondsY = screenCenterY - 50;
+      int secondsY = screenCenterY - 40 + CLOCK_VERTICAL_OFFSET;
       int secondsWidth = 40;
       int secondsHeight = 20;
       
@@ -113,9 +125,9 @@ void updateDigitalTime() {
         sprintf(timeStr, "%d", seconds);
       }
       
-      // Draw text with semi-transparent background
+      // Draw seconds with semi-transparent background
       tft.setTextSize(2);
-      tft.setCursor(screenCenterX - 10, screenCenterY - 40);
+      tft.setCursor(screenCenterX - 10, screenCenterY - 40 + CLOCK_VERTICAL_OFFSET);
       tft.print(timeStr);
     }
 
@@ -132,22 +144,22 @@ void updateDigitalTime() {
       
       // Draw hours text with semi-transparent background
       tft.setTextSize(4);
-      tft.setCursor(screenCenterX - 58, screenCenterY - 20);
+      tft.setCursor(screenCenterX - 58, screenCenterY - 20 + CLOCK_VERTICAL_OFFSET);
       tft.print(timeStr);
     }
     
     // Handle colon update (only if colon state changed)
     if (showColon != prevColonState) {
-      // Colon position
+      // Colon position - apply vertical offset
       int colonX = screenCenterX - 15;
-      int colonY = screenCenterY - 25;
+      int colonY = screenCenterY - 25 + CLOCK_VERTICAL_OFFSET;
       int colonWidth = 25;
       int colonHeight = 45;
       
       // Either draw the colon or clear its area by redrawing background
       if (showColon) {
         tft.setTextSize(4);
-        tft.setCursor(screenCenterX - 10, screenCenterY - 20);
+        tft.setCursor(screenCenterX - 10, screenCenterY - 20 + CLOCK_VERTICAL_OFFSET);
         tft.print(":");
       } else {
         // When colon needs to be hidden, draw a small rect with the background color
@@ -165,9 +177,9 @@ void updateDigitalTime() {
         sprintf(timeStr, "%d", minutes);
       }
       
-      // Draw minutes text with semi-transparent background - FIXED POSITION
+      // Draw minutes text with semi-transparent background - apply vertical offset
       tft.setTextSize(4);
-      tft.setCursor(screenCenterX + 15, screenCenterY - 20);
+      tft.setCursor(screenCenterX + 15, screenCenterY - 20 + CLOCK_VERTICAL_OFFSET);
       tft.print(timeStr);
     }
     
@@ -183,9 +195,9 @@ void updateDigitalTime() {
         isPM = (hours >= 12);
       }
       
-      // Draw AM/PM indicator with semi-transparent background
+      // Draw AM/PM indicator with semi-transparent background - apply vertical offset
       tft.setTextSize(2);
-      tft.setCursor(screenCenterX - 10, screenCenterY + 20);
+      tft.setCursor(screenCenterX - 10, screenCenterY + 20 + CLOCK_VERTICAL_OFFSET);
       if (isPM) {
         tft.println("PM");
       } else {
@@ -209,9 +221,9 @@ void updateArcDigitalColon() {
   
   // Only call update if colon state changed
   if (oldColonState != showColon) {
-    // Position for colon
+    // Position for colon - apply vertical offset
     int colonX = screenCenterX - 15;
-    int colonY = screenCenterY - 25;
+    int colonY = screenCenterY - 25 + CLOCK_VERTICAL_OFFSET;
     int colonWidth = 25;
     int colonHeight = 45;
     
@@ -219,7 +231,7 @@ void updateArcDigitalColon() {
       // Draw colon with semi-transparent background
       tft.setTextColor(IRONMAN_CYAN, TEXT_BACKGROUND_COLOR);
       tft.setTextSize(4);
-      tft.setCursor(screenCenterX - 10, screenCenterY - 20);
+      tft.setCursor(screenCenterX - 10, screenCenterY - 20 + CLOCK_VERTICAL_OFFSET);
       tft.print(":");
     } else {
       // Clear the colon with background color
