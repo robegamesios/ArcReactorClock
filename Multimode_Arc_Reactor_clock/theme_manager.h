@@ -18,7 +18,7 @@
 #define MODE_TOTAL 3
 
 // LED color IDs for consistency
-// When adding a new color, make sure to update this to add a new #define 
+// When adding a new color, make sure to update this to add a new #define
 // along with LEDColorDefinition ledColors[COLOR_TOTAL]
 #define COLOR_IRONMAN_RED 0
 #define COLOR_SPIDERMAN_RED 1
