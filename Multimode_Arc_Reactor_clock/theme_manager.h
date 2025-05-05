@@ -43,13 +43,13 @@ struct LEDColorDefinition {
   const char* name;
 };
 
-// Predefined LED colors array - now with names
+// Predefined LED colors array - now with names (R, G, B, name) format
 LEDColorDefinition ledColors[COLOR_TOTAL] = {
   { 180, 20, 5, 0xB081, "Iron Man Red" },
   { 220, 0, 10, 0xE004, "Spiderman Red" },
   { 255, 0, 0, 0xF800, "Bright Red" },
   { 30, 60, 150, 0x1B0C, "Cap America Blue" },
-  { 0, 20, 255, 0x051F, "Medium Blue" },
+  { 0, 20, 255, 0x051F, "Arc Reactor Blue" },
   { 0, 255, 255, 0x07FF, "Cyan" },
   { 40, 130, 10, 0x2680, "Hulk Green" },
   { 0, 255, 50, 0x07E0, "Bright Green" },
