@@ -663,6 +663,18 @@ void loop() {
   // Check for button presses
   checkButtonPress();
 
+  // Check if color name overlay needs to be cleared
+  checkColorNameTimeout();
+
+  // Check if screen needs refresh from color name timeout
+  if (needClockRefresh) {
+    needClockRefresh = false;  // Reset the flag
+    drawBackground();          // Redraw the background
+    if (!isClockHidden) {
+      updateClockDisplay();  // Update the clock display
+    }
+  }
+
   // Get current time if needed
   bool timeUpdateNeeded = (currentMillis - lastTimeCheck >= 1000);
   bool colonUpdateNeeded = (currentMillis - lastColonBlink >= 500);
