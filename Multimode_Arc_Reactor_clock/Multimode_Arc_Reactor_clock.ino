@@ -282,8 +282,30 @@ void cycleBgImage() {
     switchMode(newMode);
   } else {
     Serial.println("Staying in same mode, just updating background");
-    // Update the display with the new background
+
+    // Clear the screen completely first
+    tft.fillScreen(TFT_BLACK);
+
+    // Draw the new background
     drawBackground();
+
+    // Add a small delay to ensure the background is fully rendered
+    delay(50);
+
+    // Force a complete refresh of the clock display
+    if (!isClockHidden) {
+      if (currentMode == MODE_ARC_DIGITAL) {
+        // Reset all tracking variables to force complete redraw
+        resetArcDigitalVariables();
+        // Now redraw the time
+        updateDigitalTime();
+      } else if (currentMode == MODE_GIF_DIGITAL) {
+        // Reset all tracking variables to force complete redraw
+        resetGifDigitalVariables();
+        // Now redraw the time
+        updateGifDigitalTime();
+      }
+    }
   }
 
   // Save settings
