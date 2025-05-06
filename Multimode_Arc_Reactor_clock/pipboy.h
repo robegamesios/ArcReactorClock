@@ -293,6 +293,7 @@ void updatePipBoyGif() {
 // Clean up resources when switching away from Pip-Boy mode
 void cleanupPipBoyMode() {
   if (gifBuffer != NULL) {
+    Serial.println("Cleaning up Pip-Boy GIF resources");
     gif.close();
     free(gifBuffer);
     gifBuffer = NULL;

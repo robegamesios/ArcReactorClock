@@ -61,8 +61,8 @@ TFT_eSPI tft = TFT_eSPI();
 #include "pipboy.h"
 
 // WiFi settings - enter your credentials here
-const char* ssid = "SSID";          // Enter your WiFi network name
-const char* password = "PASSWORD";  // Enter your WiFi password
+const char* ssid = "ASUS-RT-AX56U-2.4G";  // Enter your WiFi network name
+const char* password = "tocino25";        // Enter your WiFi password
 
 // Time settings
 const char* ntpServer = "pool.ntp.org";
@@ -201,13 +201,15 @@ void prioritizeIronManBackground() {
 void switchMode(int mode) {
   // Store old mode
   int oldMode = currentMode;
+  Serial.print("Switching from mode ");
+  Serial.print(oldMode);
+  Serial.print(" to mode ");
+  Serial.println(mode);
 
-  // Clean up resources based on the mode we're switching from
-  if (oldMode == MODE_PIPBOY) {
-    cleanupPipBoyMode();
-  } else if (oldMode == MODE_GIF_DIGITAL) {
-    cleanupGifDigitalMode();
-  }
+  // Always clean up ALL GIF resources regardless of the mode we're switching from
+  // This ensures both Pip-Boy and GIF Digital resources are properly released
+  cleanupPipBoyMode();
+  cleanupGifDigitalMode();
 
   // Clear screen
   tft.fillScreen(TFT_BLACK);
@@ -224,6 +226,9 @@ void switchMode(int mode) {
 
   // Update LEDs
   updateLEDs();
+
+  Serial.print("Mode switch complete. Now in mode ");
+  Serial.println(currentMode);
 }
 
 // Handle background image button press
@@ -238,26 +243,52 @@ void cycleBgImage() {
   String lowerBgFile = bgFile;
   lowerBgFile.toLowerCase();  // Convert to lowercase for case-insensitive comparison
 
+  Serial.println("\n----- CYCLING BACKGROUND -----");
+  Serial.print("Selected background: ");
+  Serial.println(bgFile);
+
   // Determine the appropriate mode based on extension and filename
+  int newMode = currentMode;  // Default to staying in current mode
+
   if (bgFile.endsWith(".gif")) {
+    Serial.println("GIF file detected");
+
     // Check if it's vaultboy.gif (for Pip-Boy mode)
     if (lowerBgFile.indexOf("vaultboy") >= 0) {
-      // Switch to Pip-Boy mode
-      currentMode = MODE_PIPBOY;
+      Serial.println("This is vaultboy.gif - switching to Pip-Boy mode");
+      newMode = MODE_PIPBOY;
     } else {
-      // Switch to GIF Digital mode for all other GIF files
-      currentMode = MODE_GIF_DIGITAL;
+      Serial.println("This is a regular GIF - switching to GIF Digital mode");
+      newMode = MODE_GIF_DIGITAL;
     }
-  } else if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL) {
+  } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
+    Serial.println("JPEG file detected");
+
     // Coming from a GIF mode, switch to digital
-    currentMode = MODE_ARC_DIGITAL;
+    if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL) {
+      Serial.println("Coming from a GIF mode, switching to Arc Digital");
+      newMode = MODE_ARC_DIGITAL;
+    }
   }
 
-  // Update the display with the new background
-  switchMode(currentMode);
+  Serial.print("Current mode: ");
+  Serial.print(currentMode);
+  Serial.print(", New mode: ");
+  Serial.println(newMode);
+
+  // Only perform a mode switch if needed
+  if (newMode != currentMode) {
+    Serial.println("Mode change required - calling switchMode()");
+    switchMode(newMode);
+  } else {
+    Serial.println("Staying in same mode, just updating background");
+    // Update the display with the new background
+    drawBackground();
+  }
 
   // Save settings
   saveSettings();
+  Serial.println("----- CYCLING COMPLETE -----");
 }
 
 // Handle vertical position button press

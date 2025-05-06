@@ -224,11 +224,19 @@ void updateGifDigitalBackground() {
 // Clean up resources when switching away from GIF Digital mode
 void cleanupGifDigitalMode() {
   if (gifDigitalBuffer != NULL) {
+    Serial.println("Cleaning up GIF Digital resources");
     gifDigitalClock.close();
     free(gifDigitalBuffer);
     gifDigitalBuffer = NULL;
     gifDigitalSize = 0;
     Serial.println("GIF Digital resources cleaned up");
+
+    // Reset variables to force redraw next time
+    prevHoursGif = -1;
+    prevMinutesGif = -1;
+    prevSecondsGif = -1;
+    prevColonStateGif = false;
+    showColonGif = true;
   }
 }
 
