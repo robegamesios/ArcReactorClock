@@ -27,6 +27,7 @@ uint8_t *gifBuffer = NULL;  // Buffer to hold GIF data
 int gifSize = 0;
 
 // GIF drawing function for the AnimatedGIF library
+// GIF drawing function for the AnimatedGIF library
 void GIFDraw(GIFDRAW *pDraw) {
   uint8_t *s;
   uint16_t *d, *usPalette, usTemp[320];
@@ -48,7 +49,9 @@ void GIFDraw(GIFDRAW *pDraw) {
     if (s[x] == pDraw->ucTransparent) {
       usTemp[x] = PIP_BLACK;  // Force transparent pixels to black
     } else {
-      usTemp[x] = usPalette[s[x]];  // Use original palette colors
+      // Apply byte swapping to fix colors
+      uint16_t color = usPalette[s[x]];
+      usTemp[x] = (color >> 8) | (color << 8);
     }
   }
   d = usTemp;

@@ -18,6 +18,7 @@
 #include <SPIFFS.h>
 #include <TJpg_Decoder.h>
 #include "simple_storage.h"
+#include "gif_digital.h"
 
 // Hardware pins
 #define LED_PIN 21         // NeoPixel LED ring pin
@@ -34,7 +35,8 @@ int led_ring_brightness_flash = 250;  // Flash brightness (0-255)
 #define MODE_ARC_DIGITAL 0
 #define MODE_ARC_ANALOG 1
 #define MODE_PIPBOY 2
-#define MODE_TOTAL 3
+#define MODE_GIF_DIGITAL 3
+#define MODE_TOTAL 4
 
 // Current mode variable
 int currentMode = MODE_ARC_DIGITAL;  // Start with Arc Reactor digital mode
@@ -200,9 +202,11 @@ void switchMode(int mode) {
   // Store old mode
   int oldMode = currentMode;
 
-  // If switching away from Pip-Boy mode, clean up GIF resources
+  // Clean up resources based on the mode we're switching from
   if (oldMode == MODE_PIPBOY) {
     cleanupPipBoyMode();
+  } else if (oldMode == MODE_GIF_DIGITAL) {
+    cleanupGifDigitalMode();
   }
 
   // Clear screen
@@ -231,13 +235,21 @@ void cycleBgImage() {
 
   // Get the file extension for the selected background
   String bgFile = backgroundImages[currentBgIndex];
+  String lowerBgFile = bgFile;
+  lowerBgFile.toLowerCase();  // Convert to lowercase for case-insensitive comparison
 
-  // Determine the appropriate mode based on extension
+  // Determine the appropriate mode based on extension and filename
   if (bgFile.endsWith(".gif")) {
-    // Switch to Pip-Boy mode for any GIF file
-    currentMode = MODE_PIPBOY;
-  } else if (currentMode == MODE_PIPBOY) {
-    // Coming from Pip-Boy mode, switch to digital
+    // Check if it's vaultboy.gif (for Pip-Boy mode)
+    if (lowerBgFile.indexOf("vaultboy") >= 0) {
+      // Switch to Pip-Boy mode
+      currentMode = MODE_PIPBOY;
+    } else {
+      // Switch to GIF Digital mode for all other GIF files
+      currentMode = MODE_GIF_DIGITAL;
+    }
+  } else if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL) {
+    // Coming from a GIF mode, switch to digital
     currentMode = MODE_ARC_DIGITAL;
   }
 
@@ -395,8 +407,11 @@ void drawBackground() {
   if (currentMode == MODE_PIPBOY) {
     // For Pip-Boy mode, draw the Pip-Boy interface
     drawPipBoyInterface();
+  } else if (currentMode == MODE_GIF_DIGITAL) {
+    // For GIF Digital mode, draw the GIF background
+    drawGifDigitalBackground(bgFile.c_str());
   } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
-    // For JPEG backgrounds, display the image
+    // For JPEG backgrounds in other modes, display the image
     displayJPEGBackground(bgFile.c_str());
   }
 }
@@ -423,6 +438,13 @@ void updateClockDisplay() {
       // Draw Pip-Boy interface (already done in drawBackground)
       // Just update the time
       updatePipBoyTime();
+      break;
+
+    case MODE_GIF_DIGITAL:
+      // Reset GIF digital clock variables
+      resetGifDigitalVariables();
+      // Update time display
+      updateGifDigitalTime();
       break;
   }
 }
@@ -723,6 +745,22 @@ void loop() {
 
       // Update the GIF animation
       updatePipBoyGif();
+    } else if (currentMode == MODE_GIF_DIGITAL) {
+      // GIF Digital mode
+      if (timeUpdateNeeded) {
+        lastTimeCheck = currentMillis;
+        updateTimeAndDate();
+        updateGifDigitalTime();
+      }
+
+      // Handle blinking colon
+      if (colonUpdateNeeded) {
+        lastColonBlink = currentMillis;
+        updateGifDigitalColon();
+      }
+
+      // Update the GIF animation
+      updateGifDigitalBackground();
     }
   } else {
     // Even if clock is hidden, still update time
