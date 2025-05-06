@@ -277,11 +277,11 @@ void cycleVerticalPosition() {
       isClockHidden = false;
     }
   } else {
-    // For both digital and analog modes, use this sequence:
+    // For both digital modes (arc digital and gif digital), use this sequence:
     // Digital -80 -> Digital 0 -> Digital 80 -> Digital hidden ->
     // Analog visible -> Digital -80 (repeat)
 
-    if (currentMode == MODE_ARC_DIGITAL) {
+    if (currentMode == MODE_ARC_DIGITAL || currentMode == MODE_GIF_DIGITAL) {
       // We're in digital mode
       if (currentVertPos == POS_TOP) {
         // Move to center position (still digital)
@@ -307,14 +307,20 @@ void cycleVerticalPosition() {
       }
     } else if (currentMode == MODE_ARC_ANALOG) {
       // We're in analog mode - next press goes back to digital
-      currentMode = MODE_ARC_DIGITAL;
+      // Check what kind of background file we have
+      String bgFile = backgroundImages[currentBgIndex];
+      if (bgFile.endsWith(".gif")) {
+        currentMode = MODE_GIF_DIGITAL;  // GIF file uses GIF digital mode
+      } else {
+        currentMode = MODE_ARC_DIGITAL;  // JPEG file uses Arc digital mode
+      }
       currentVertPos = POS_TOP;
       isClockHidden = false;
 
       // Update settings and switch mode
       CLOCK_VERTICAL_OFFSET = currentVertPos;
       saveSettings();
-      switchMode(MODE_ARC_DIGITAL);
+      switchMode(currentMode);
       return;  // Exit early to avoid double updates
     }
   }
@@ -418,7 +424,14 @@ void drawBackground() {
 
 // Update the clock display based on current settings
 void updateClockDisplay() {
-  if (isClockHidden) return;  // Don't show the clock if hidden
+  // For GIF Digital mode, always update the GIF animation regardless of clock visibility
+  if (currentMode == MODE_GIF_DIGITAL) {
+    // This ensures the GIF stays animated even when the clock is hidden
+    updateGifDigitalBackground();
+  }
+
+  // Skip showing the clock text if hidden
+  if (isClockHidden) return;
 
   switch (currentMode) {
     case MODE_ARC_DIGITAL:
@@ -443,7 +456,7 @@ void updateClockDisplay() {
     case MODE_GIF_DIGITAL:
       // Reset GIF digital clock variables
       resetGifDigitalVariables();
-      // Update time display
+      // Update time display (but not background - that's handled separately)
       updateGifDigitalTime();
       break;
   }
@@ -763,6 +776,13 @@ void loop() {
       updateGifDigitalBackground();
     }
   } else {
+    // Even if clock is hidden, still update GIF animations
+    if (currentMode == MODE_GIF_DIGITAL) {
+      updateGifDigitalBackground();
+    } else if (currentMode == MODE_PIPBOY) {
+      updatePipBoyGif();
+    }
+
     // Even if clock is hidden, still update time
     if (timeUpdateNeeded) {
       lastTimeCheck = currentMillis;
