@@ -15,10 +15,11 @@
 #define MODE_ARC_DIGITAL 0
 #define MODE_ARC_ANALOG 1
 #define MODE_PIPBOY 2
-#define MODE_TOTAL 3
+#define MODE_GIF_DIGITAL 3
+#define MODE_TOTAL 4 
 
 // LED color IDs for consistency
-// When adding a new color, make sure to update this to add a new #define 
+// When adding a new color, make sure to update this to add a new #define
 // along with LEDColorDefinition ledColors[COLOR_TOTAL]
 #define COLOR_IRONMAN_RED 0
 #define COLOR_SPIDERMAN_RED 1
