@@ -38,6 +38,8 @@ int led_ring_brightness_flash = 250;  // Flash brightness (0-255)
 #define MODE_GIF_DIGITAL 3
 #define MODE_TOTAL 4
 
+#define MAX_BACKGROUNDS 99 // Set max number of backgrounds
+
 // Current mode variable
 int currentMode = MODE_ARC_DIGITAL;  // Start with Arc Reactor digital mode
 
@@ -61,8 +63,8 @@ TFT_eSPI tft = TFT_eSPI();
 #include "pipboy.h"
 
 // WiFi settings - enter your credentials here
-const char* ssid = "ASUS-RT-AX56U-2.4G";  // Enter your WiFi network name
-const char* password = "tocino25";        // Enter your WiFi password
+const char* ssid = "SSID";  // Enter your WiFi network name
+const char* password = "PASSWORD";        // Enter your WiFi password
 
 // Time settings
 const char* ntpServer = "pool.ntp.org";
@@ -95,7 +97,7 @@ unsigned long lastClrButtonPress = 0;
 unsigned long debounceDelay = 300;  // Debounce time in milliseconds
 
 // Array to store available image filenames
-String backgroundImages[10];  // Up to 10 different background images
+String backgroundImages[MAX_BACKGROUNDS];
 int numBgImages = 0;
 
 // Function declarations
@@ -136,7 +138,7 @@ void checkForImageFiles() {
 
   Serial.println("\n----- Available Background Images -----");
 
-  while (file && numBgImages < 10) {
+  while (file && numBgImages < MAX_BACKGROUNDS) {
     String fileName = file.name();
 
     if (!fileName.startsWith("/")) {
