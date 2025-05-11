@@ -18,6 +18,7 @@
 #include <SPIFFS.h>
 #include <TJpg_Decoder.h>
 #include "simple_storage.h"
+#include "gif_digital.h"
 
 // Hardware pins
 #define LED_PIN 21         // NeoPixel LED ring pin
@@ -34,7 +35,10 @@ int led_ring_brightness_flash = 250;  // Flash brightness (0-255)
 #define MODE_ARC_DIGITAL 0
 #define MODE_ARC_ANALOG 1
 #define MODE_PIPBOY 2
-#define MODE_TOTAL 3
+#define MODE_GIF_DIGITAL 3
+#define MODE_TOTAL 4
+
+#define MAX_BACKGROUNDS 99 // Set max number of backgrounds
 
 // Current mode variable
 int currentMode = MODE_ARC_DIGITAL;  // Start with Arc Reactor digital mode
@@ -59,8 +63,8 @@ TFT_eSPI tft = TFT_eSPI();
 #include "pipboy.h"
 
 // WiFi settings - enter your credentials here
-const char* ssid = "SSID";          // Enter your WiFi network name
-const char* password = "PASSWORD";  // Enter your WiFi password
+const char* ssid = "SSID";  // Enter your WiFi network name
+const char* password = "PASSWORD";        // Enter your WiFi password
 
 // Time settings
 const char* ntpServer = "pool.ntp.org";
@@ -93,7 +97,7 @@ unsigned long lastClrButtonPress = 0;
 unsigned long debounceDelay = 300;  // Debounce time in milliseconds
 
 // Array to store available image filenames
-String backgroundImages[10];  // Up to 10 different background images
+String backgroundImages[MAX_BACKGROUNDS];
 int numBgImages = 0;
 
 // Function declarations
@@ -134,7 +138,7 @@ void checkForImageFiles() {
 
   Serial.println("\n----- Available Background Images -----");
 
-  while (file && numBgImages < 10) {
+  while (file && numBgImages < MAX_BACKGROUNDS) {
     String fileName = file.name();
 
     if (!fileName.startsWith("/")) {
@@ -199,11 +203,15 @@ void prioritizeIronManBackground() {
 void switchMode(int mode) {
   // Store old mode
   int oldMode = currentMode;
+  Serial.print("Switching from mode ");
+  Serial.print(oldMode);
+  Serial.print(" to mode ");
+  Serial.println(mode);
 
-  // If switching away from Pip-Boy mode, clean up GIF resources
-  if (oldMode == MODE_PIPBOY) {
-    cleanupPipBoyMode();
-  }
+  // Always clean up ALL GIF resources regardless of the mode we're switching from
+  // This ensures both Pip-Boy and GIF Digital resources are properly released
+  cleanupPipBoyMode();
+  cleanupGifDigitalMode();
 
   // Clear screen
   tft.fillScreen(TFT_BLACK);
@@ -220,6 +228,9 @@ void switchMode(int mode) {
 
   // Update LEDs
   updateLEDs();
+
+  Serial.print("Mode switch complete. Now in mode ");
+  Serial.println(currentMode);
 }
 
 // Handle background image button press
@@ -231,21 +242,77 @@ void cycleBgImage() {
 
   // Get the file extension for the selected background
   String bgFile = backgroundImages[currentBgIndex];
+  String lowerBgFile = bgFile;
+  lowerBgFile.toLowerCase();  // Convert to lowercase for case-insensitive comparison
 
-  // Determine the appropriate mode based on extension
+  Serial.println("\n----- CYCLING BACKGROUND -----");
+  Serial.print("Selected background: ");
+  Serial.println(bgFile);
+
+  // Determine the appropriate mode based on extension and filename
+  int newMode = currentMode;  // Default to staying in current mode
+
   if (bgFile.endsWith(".gif")) {
-    // Switch to Pip-Boy mode for any GIF file
-    currentMode = MODE_PIPBOY;
-  } else if (currentMode == MODE_PIPBOY) {
-    // Coming from Pip-Boy mode, switch to digital
-    currentMode = MODE_ARC_DIGITAL;
+    Serial.println("GIF file detected");
+
+    // Check if it's vaultboy.gif (for Pip-Boy mode)
+    if (lowerBgFile.indexOf("vaultboy") >= 0) {
+      Serial.println("This is vaultboy.gif - switching to Pip-Boy mode");
+      newMode = MODE_PIPBOY;
+    } else {
+      Serial.println("This is a regular GIF - switching to GIF Digital mode");
+      newMode = MODE_GIF_DIGITAL;
+    }
+  } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
+    Serial.println("JPEG file detected");
+
+    // Coming from a GIF mode, switch to digital
+    if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL) {
+      Serial.println("Coming from a GIF mode, switching to Arc Digital");
+      newMode = MODE_ARC_DIGITAL;
+    }
   }
 
-  // Update the display with the new background
-  switchMode(currentMode);
+  Serial.print("Current mode: ");
+  Serial.print(currentMode);
+  Serial.print(", New mode: ");
+  Serial.println(newMode);
+
+  // Only perform a mode switch if needed
+  if (newMode != currentMode) {
+    Serial.println("Mode change required - calling switchMode()");
+    switchMode(newMode);
+  } else {
+    Serial.println("Staying in same mode, just updating background");
+
+    // Clear the screen completely first
+    tft.fillScreen(TFT_BLACK);
+
+    // Draw the new background
+    drawBackground();
+
+    // Add a small delay to ensure the background is fully rendered
+    delay(50);
+
+    // Force a complete refresh of the clock display
+    if (!isClockHidden) {
+      if (currentMode == MODE_ARC_DIGITAL) {
+        // Reset all tracking variables to force complete redraw
+        resetArcDigitalVariables();
+        // Now redraw the time
+        updateDigitalTime();
+      } else if (currentMode == MODE_GIF_DIGITAL) {
+        // Reset all tracking variables to force complete redraw
+        resetGifDigitalVariables();
+        // Now redraw the time
+        updateGifDigitalTime();
+      }
+    }
+  }
 
   // Save settings
   saveSettings();
+  Serial.println("----- CYCLING COMPLETE -----");
 }
 
 // Handle vertical position button press
@@ -265,11 +332,11 @@ void cycleVerticalPosition() {
       isClockHidden = false;
     }
   } else {
-    // For both digital and analog modes, use this sequence:
+    // For both digital modes (arc digital and gif digital), use this sequence:
     // Digital -80 -> Digital 0 -> Digital 80 -> Digital hidden ->
     // Analog visible -> Digital -80 (repeat)
 
-    if (currentMode == MODE_ARC_DIGITAL) {
+    if (currentMode == MODE_ARC_DIGITAL || currentMode == MODE_GIF_DIGITAL) {
       // We're in digital mode
       if (currentVertPos == POS_TOP) {
         // Move to center position (still digital)
@@ -295,14 +362,20 @@ void cycleVerticalPosition() {
       }
     } else if (currentMode == MODE_ARC_ANALOG) {
       // We're in analog mode - next press goes back to digital
-      currentMode = MODE_ARC_DIGITAL;
+      // Check what kind of background file we have
+      String bgFile = backgroundImages[currentBgIndex];
+      if (bgFile.endsWith(".gif")) {
+        currentMode = MODE_GIF_DIGITAL;  // GIF file uses GIF digital mode
+      } else {
+        currentMode = MODE_ARC_DIGITAL;  // JPEG file uses Arc digital mode
+      }
       currentVertPos = POS_TOP;
       isClockHidden = false;
 
       // Update settings and switch mode
       CLOCK_VERTICAL_OFFSET = currentVertPos;
       saveSettings();
-      switchMode(MODE_ARC_DIGITAL);
+      switchMode(currentMode);
       return;  // Exit early to avoid double updates
     }
   }
@@ -395,15 +468,25 @@ void drawBackground() {
   if (currentMode == MODE_PIPBOY) {
     // For Pip-Boy mode, draw the Pip-Boy interface
     drawPipBoyInterface();
+  } else if (currentMode == MODE_GIF_DIGITAL) {
+    // For GIF Digital mode, draw the GIF background
+    drawGifDigitalBackground(bgFile.c_str());
   } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
-    // For JPEG backgrounds, display the image
+    // For JPEG backgrounds in other modes, display the image
     displayJPEGBackground(bgFile.c_str());
   }
 }
 
 // Update the clock display based on current settings
 void updateClockDisplay() {
-  if (isClockHidden) return;  // Don't show the clock if hidden
+  // For GIF Digital mode, always update the GIF animation regardless of clock visibility
+  if (currentMode == MODE_GIF_DIGITAL) {
+    // This ensures the GIF stays animated even when the clock is hidden
+    updateGifDigitalBackground();
+  }
+
+  // Skip showing the clock text if hidden
+  if (isClockHidden) return;
 
   switch (currentMode) {
     case MODE_ARC_DIGITAL:
@@ -423,6 +506,13 @@ void updateClockDisplay() {
       // Draw Pip-Boy interface (already done in drawBackground)
       // Just update the time
       updatePipBoyTime();
+      break;
+
+    case MODE_GIF_DIGITAL:
+      // Reset GIF digital clock variables
+      resetGifDigitalVariables();
+      // Update time display (but not background - that's handled separately)
+      updateGifDigitalTime();
       break;
   }
 }
@@ -723,8 +813,31 @@ void loop() {
 
       // Update the GIF animation
       updatePipBoyGif();
+    } else if (currentMode == MODE_GIF_DIGITAL) {
+      // GIF Digital mode
+      if (timeUpdateNeeded) {
+        lastTimeCheck = currentMillis;
+        updateTimeAndDate();
+        updateGifDigitalTime();
+      }
+
+      // Handle blinking colon
+      if (colonUpdateNeeded) {
+        lastColonBlink = currentMillis;
+        updateGifDigitalColon();
+      }
+
+      // Update the GIF animation
+      updateGifDigitalBackground();
     }
   } else {
+    // Even if clock is hidden, still update GIF animations
+    if (currentMode == MODE_GIF_DIGITAL) {
+      updateGifDigitalBackground();
+    } else if (currentMode == MODE_PIPBOY) {
+      updatePipBoyGif();
+    }
+
     // Even if clock is hidden, still update time
     if (timeUpdateNeeded) {
       lastTimeCheck = currentMillis;
