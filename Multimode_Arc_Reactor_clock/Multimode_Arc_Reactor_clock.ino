@@ -25,6 +25,7 @@
 #include "arc_digital.h"
 #include "arc_analog.h"
 #include "pipboy.h"
+#include "file_organizer.h"
 
 // Hardware pins
 #define LED_PIN 21         // NeoPixel LED ring pin
@@ -216,6 +217,7 @@ void cycleBgImage() {
   if (numBgImages <= 0) return;
 
   currentBgIndex = (currentBgIndex + 1) % numBgImages;
+  printCurrentBackground();
 
   String bgFile = backgroundImages[currentBgIndex];
   String lowerBgFile = bgFile;
@@ -469,8 +471,7 @@ void loadSettings() {
     currentMode = savedMode;
   }
 
-  if (savedVertPos == POS_TOP || savedVertPos == POS_CENTER || 
-      savedVertPos == POS_BOTTOM || savedVertPos == POS_HIDDEN) {
+  if (savedVertPos == POS_TOP || savedVertPos == POS_CENTER || savedVertPos == POS_BOTTOM || savedVertPos == POS_HIDDEN) {
     currentVertPos = savedVertPos;
     isClockHidden = (savedVertPos == POS_HIDDEN);
     CLOCK_VERTICAL_OFFSET = currentVertPos;
@@ -572,7 +573,11 @@ void setup() {
 
   // Check for available images before loading settings
   checkForImageFiles();
-  prioritizeIronManBackground();
+
+  // Sort background images in the specified order
+  // (JPEG files first with Iron Man at beginning, then GIFs, then special themes)
+  sortBackgroundImages();
+  printCurrentBackground();  // Print info about initial background
 
   // Load saved settings
   loadSettings();
@@ -681,8 +686,7 @@ void loop() {
   }
 
   // LED ring effect every hour or half-hour
-  if (seconds == 0 && (minutes == 0 || minutes == 30) && 
-      (currentMillis - lastTimeCheck < 1000)) {
+  if (seconds == 0 && (minutes == 0 || minutes == 30) && (currentMillis - lastTimeCheck < 1000)) {
     flashEffect();
   }
 }
