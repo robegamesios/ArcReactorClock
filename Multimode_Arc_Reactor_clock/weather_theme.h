@@ -201,29 +201,14 @@ void drawWeatherIcon() {
   // Clear area for the icon
   tft.fillRect(iconX - 40, iconY - 40, 80, 80, WEATHER_BG);
   
-  // Get weather icon info
-  char weatherType = '?';
-  bool isDay = true;
-  
   // Debug output
-  Serial.print("Icon code length: ");
-  Serial.println(strlen(currentWeather.iconCode));
   Serial.print("Icon code: ");
   Serial.println(currentWeather.iconCode);
   
-  // Verify we have a valid icon code (should be like "01d", "02n", etc.)
+  // Check if we have a valid icon code
+  bool isDay = true;
   if (strlen(currentWeather.iconCode) >= 3) {
-    weatherType = currentWeather.iconCode[0];
-    if (currentWeather.iconCode[1] >= '0' && currentWeather.iconCode[1] <= '9') {
-      // Second character should be a digit
-      weatherType = (weatherType - '0') * 10 + (currentWeather.iconCode[1] - '0');
-    }
     isDay = currentWeather.iconCode[2] == 'd';
-    
-    Serial.print("Parsed weather type: ");
-    Serial.println((int)weatherType);
-    Serial.print("Is day: ");
-    Serial.println(isDay);
   } else {
     Serial.println("Invalid icon code, using default");
   }
