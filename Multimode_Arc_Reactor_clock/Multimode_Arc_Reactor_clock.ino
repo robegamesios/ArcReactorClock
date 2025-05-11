@@ -20,6 +20,16 @@
 #include "simple_storage.h"
 #include "gif_digital.h"
 
+// Project specific header files
+#include "config.h"
+#include "utils.h"
+#include "theme_manager.h"
+#include "led_controls.h"
+#include "arc_digital.h"
+#include "arc_analog.h"
+#include "pipboy.h"
+#include "weather_theme.h"
+
 // Hardware pins
 #define LED_PIN 21         // NeoPixel LED ring pin
 #define NUMPIXELS 35       // Number of LEDs in the ring
@@ -36,7 +46,8 @@ int led_ring_brightness_flash = 250;  // Flash brightness (0-255)
 #define MODE_ARC_ANALOG 1
 #define MODE_PIPBOY 2
 #define MODE_GIF_DIGITAL 3
-#define MODE_TOTAL 4
+#define MODE_WEATHER 4
+#define MODE_TOTAL 5
 
 #define MAX_BACKGROUNDS 99 // Set max number of backgrounds
 
@@ -53,23 +64,14 @@ TFT_eSPI tft = TFT_eSPI();
 #define POS_BOTTOM 80
 #define POS_HIDDEN 999  // Special value to hide the clock
 
-// For now, include these header files later after defining variables
-// they need access to
-#include "utils.h"
-#include "theme_manager.h"
-#include "led_controls.h"
-#include "arc_digital.h"
-#include "arc_analog.h"
-#include "pipboy.h"
-
 // WiFi settings - enter your credentials here
-const char* ssid = "SSID";  // Enter your WiFi network name
-const char* password = "PASSWORD";        // Enter your WiFi password
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 
 // Time settings
-const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = -28800;    // PST offset (-8 hours * 3600 seconds/hour)
-const int daylightOffset_sec = 3600;  // Daylight saving time adjustment (1 hour)
+const char* ntpServer = NTP_SERVER;
+const long gmtOffset_sec = GMT_OFFSET_SEC;
+const int daylightOffset_sec = DAYLIGHT_OFFSET_SEC;
 
 // Display variables
 int screenCenterX;
@@ -212,12 +214,21 @@ void switchMode(int mode) {
   // This ensures both Pip-Boy and GIF Digital resources are properly released
   cleanupPipBoyMode();
   cleanupGifDigitalMode();
+  // Clean up weather mode resources if needed
+  if (oldMode == MODE_WEATHER) {
+    cleanupWeatherMode();
+  }
 
   // Clear screen
   tft.fillScreen(TFT_BLACK);
 
   // Update current mode
   currentMode = mode;
+
+  // Initialize the weather mode if switching to it
+  if (mode == MODE_WEATHER) {
+    initWeatherTheme();
+  }
 
   // Draw appropriate interface based on mode
   drawBackground();
@@ -259,16 +270,27 @@ void cycleBgImage() {
     if (lowerBgFile.indexOf("vaultboy") >= 0) {
       Serial.println("This is vaultboy.gif - switching to Pip-Boy mode");
       newMode = MODE_PIPBOY;
-    } else {
+    } 
+    // Check if it's a weather-related GIF to trigger weather mode
+    else if (lowerBgFile.indexOf("weather") >= 0) {
+      Serial.println("This is a weather-related GIF - switching to Weather mode");
+      newMode = MODE_WEATHER;
+    }
+    else {
       Serial.println("This is a regular GIF - switching to GIF Digital mode");
       newMode = MODE_GIF_DIGITAL;
     }
   } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
     Serial.println("JPEG file detected");
 
-    // Coming from a GIF mode, switch to digital
-    if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL) {
-      Serial.println("Coming from a GIF mode, switching to Arc Digital");
+    // Check if it's a weather-related JPEG to trigger weather mode
+    if (lowerBgFile.indexOf("weather") >= 0) {
+      Serial.println("This is a weather-related JPEG - switching to Weather mode");
+      newMode = MODE_WEATHER;
+    }
+    // Coming from a special mode, switch to digital
+    else if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL || currentMode == MODE_WEATHER) {
+      Serial.println("Coming from a special mode, switching to Arc Digital");
       newMode = MODE_ARC_DIGITAL;
     }
   }
@@ -318,7 +340,7 @@ void cycleBgImage() {
 // Handle vertical position button press
 void cycleVerticalPosition() {
   // Check the current mode first
-  if (currentMode == MODE_PIPBOY) {
+  if (currentMode == MODE_PIPBOY || currentMode == MODE_WEATHER) {
     // For Pip-Boy mode, just cycle vertical positions without changing mode
     if (currentVertPos == POS_TOP) {
       currentVertPos = POS_CENTER;
@@ -468,6 +490,9 @@ void drawBackground() {
   if (currentMode == MODE_PIPBOY) {
     // For Pip-Boy mode, draw the Pip-Boy interface
     drawPipBoyInterface();
+  } else if (currentMode == MODE_WEATHER) {
+    // For Weather mode, draw the Weather interface
+    drawWeatherInterface();
   } else if (currentMode == MODE_GIF_DIGITAL) {
     // For GIF Digital mode, draw the GIF background
     drawGifDigitalBackground(bgFile.c_str());
@@ -513,6 +538,11 @@ void updateClockDisplay() {
       resetGifDigitalVariables();
       // Update time display (but not background - that's handled separately)
       updateGifDigitalTime();
+      break;
+      
+    case MODE_WEATHER:
+      // Update the weather display
+      updateWeatherTime();
       break;
   }
 }
@@ -829,6 +859,19 @@ void loop() {
 
       // Update the GIF animation
       updateGifDigitalBackground();
+    } else if (currentMode == MODE_WEATHER) {
+      // Weather mode
+      if (timeUpdateNeeded) {
+        lastTimeCheck = currentMillis;
+        updateTimeAndDate();
+        updateWeatherTime();
+      }
+
+      // Update weather icon if it's animated
+      updateWeatherIcon();
+      
+      // Check if it's time to update weather data (every 10 minutes)
+      updateWeatherData();
     }
   } else {
     // Even if clock is hidden, still update GIF animations
@@ -850,3 +893,4 @@ void loop() {
     flashEffect();  // Use the one from led_controls.h
   }
 }
+
