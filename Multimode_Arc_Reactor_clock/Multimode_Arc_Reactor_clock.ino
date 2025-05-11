@@ -1,16 +1,7 @@
 /*
  * ESP32 Multi-Mode Digital Clock with TFT Display
- * Features:
- * 1. Digital Clock Mode with JPEG background
- * 2. Analog Clock Mode with JPEG background 
- * 3. Pip-Boy 3000 Mode (Fallout-inspired)
- * 4. GIF Digital Mode with animated backgrounds
- * 5. Weather Display Mode with OpenWeatherMap integration
- * 
- * Controls:
- * - Button 1 (GPIO 22): Cycle through backgrounds
- * - Button 2 (GPIO 27): Adjust vertical position
- * - Button 3 (GPIO 25): Change LED color
+ * Features analog/digital clock with JPEG backgrounds, Pip-Boy mode, 
+ * animated GIF mode and weather display with OpenWeatherMap integration
  */
 
 #include <SPI.h>
@@ -43,8 +34,8 @@
 #define CLR_BUTTON_PIN 25  // Button pin for LED color cycling
 
 // LED ring brightness settings
-int led_ring_brightness = 100;        // Normal brightness (0-255)
-int led_ring_brightness_flash = 250;  // Flash brightness (0-255)
+int led_ring_brightness = 100;
+int led_ring_brightness_flash = 250;
 
 // Vertical position settings
 #define POS_TOP -80
@@ -52,7 +43,7 @@ int led_ring_brightness_flash = 250;  // Flash brightness (0-255)
 #define POS_BOTTOM 80
 #define POS_HIDDEN 999  // Special value to hide the clock
 
-// Vertical position variable - referenced in various header files
+// Vertical position variable
 int CLOCK_VERTICAL_OFFSET = 0;
 
 // WiFi settings from config.h
@@ -80,13 +71,13 @@ int screenRadius;
 int hours = 12, minutes = 0, seconds = 0;
 int day = 1, month = 1, year = 2025;
 String dayOfWeek = "WEDNESDAY";
-bool is24Hour = false;  // Use 12-hour format by default
+bool is24Hour = false;
 bool needClockRefresh = false;
 
 // Settings variables
-int currentBgIndex = 0;           // Current background index
-int currentVertPos = POS_CENTER;  // Current vertical position
-bool isClockHidden = false;       // Clock visibility flag
+int currentBgIndex = 0;
+int currentVertPos = POS_CENTER;
+bool isClockHidden = false;
 
 // Button timing variables
 unsigned long lastTimeCheck = 0;
@@ -94,7 +85,7 @@ unsigned long lastColonBlink = 0;
 unsigned long lastBgButtonPress = 0;
 unsigned long lastPosButtonPress = 0;
 unsigned long lastClrButtonPress = 0;
-unsigned long debounceDelay = 300;  // Debounce time in milliseconds
+unsigned long debounceDelay = 300;
 
 // Background image handling
 #define MAX_BACKGROUNDS 99
@@ -109,7 +100,7 @@ TFT_eSPI tft = TFT_eSPI();
 WeatherData currentWeather = { "", "", 0, 0, 0, 0, 0, 0, 0, false };
 
 // Current mode variable
-int currentMode = MODE_ARC_DIGITAL;  // Start with Arc Reactor digital mode
+int currentMode = MODE_ARC_DIGITAL;
 
 // Function declarations
 void checkForImageFiles();
@@ -143,7 +134,7 @@ void checkForImageFiles() {
   File root = SPIFFS.open("/");
   File file = root.openNextFile();
 
-  numBgImages = 0;  // Reset counter
+  numBgImages = 0;
 
   while (file && numBgImages < MAX_BACKGROUNDS) {
     String fileName = file.name();
@@ -152,7 +143,6 @@ void checkForImageFiles() {
       fileName = "/" + fileName;
     }
 
-    // Check if this is a JPEG file or GIF file
     if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") || fileName.endsWith(".gif")) {
       backgroundImages[numBgImages] = fileName;
       numBgImages++;
@@ -168,17 +158,13 @@ void checkForImageFiles() {
 
 // Function to prioritize Iron Man image
 void prioritizeIronManBackground() {
-  // Skip if no images
   if (numBgImages <= 1) return;
 
-  // Search for Iron Man image and move it to index 0
   for (int i = 0; i < numBgImages; i++) {
     String lowerName = backgroundImages[i];
     lowerName.toLowerCase();
 
-    // Check if this is an Iron Man image
     if (lowerName.indexOf("00_ironman") >= 0) {
-      // If it's not already at position 0, swap it
       if (i > 0) {
         String temp = backgroundImages[0];
         backgroundImages[0] = backgroundImages[i];
@@ -188,13 +174,11 @@ void prioritizeIronManBackground() {
     }
   }
 
-  // Set to first background
   currentBgIndex = 0;
 }
 
 // Switch to a different clock mode
 void switchMode(int mode) {
-  // Store old mode
   int oldMode = currentMode;
 
   // Clean up resources from previous mode
@@ -204,38 +188,26 @@ void switchMode(int mode) {
     cleanupWeatherMode();
   }
 
-  // Clear screen
   tft.fillScreen(TFT_BLACK);
-
-  // Update current mode
   currentMode = mode;
 
-  // Initialize weather mode if needed
   if (mode == MODE_WEATHER) {
     initWeatherTheme();
-
-    // Set LED color based on temperature if weather data is valid
     if (currentWeather.valid) {
       setWeatherLEDColorDirectly();
     }
   }
 
-  // Draw interface for new mode
   drawBackground();
 
-  // Handle clock display based on mode
   if (mode == MODE_GIF_DIGITAL) {
-    // For GIF mode, don't show clock but continue updating GIF
     updateGifDigitalBackground();
   } else if (mode == MODE_WEATHER) {
-    // Always update weather interface
     updateWeatherTime();
   } else if (!isClockHidden) {
-    // For other modes, show clock if not hidden
     updateClockDisplay();
   }
 
-  // Update LEDs
   updateLEDs();
 }
 
@@ -243,58 +215,41 @@ void switchMode(int mode) {
 void cycleBgImage() {
   if (numBgImages <= 0) return;
 
-  // Increment the background index
   currentBgIndex = (currentBgIndex + 1) % numBgImages;
 
-  // Get the file extension for the selected background
   String bgFile = backgroundImages[currentBgIndex];
   String lowerBgFile = bgFile;
-  lowerBgFile.toLowerCase();  // Convert to lowercase for comparison
+  lowerBgFile.toLowerCase();
 
-  // Determine the appropriate mode based on extension and filename
-  int newMode = currentMode;  // Default to staying in current mode
+  int newMode = currentMode;
 
   if (bgFile.endsWith(".gif")) {
-    // Check if it's vaultboy.gif (Pip-Boy mode)
     if (lowerBgFile.indexOf("vaultboy") >= 0) {
       newMode = MODE_PIPBOY;
-    }
-    // Check if it's a weather-related GIF
-    else if (lowerBgFile.indexOf("weather") >= 0) {
+    } else if (lowerBgFile.indexOf("weather") >= 0) {
       newMode = MODE_WEATHER;
     } else {
       newMode = MODE_GIF_DIGITAL;
     }
   } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
-    // Check if it's a weather-related JPEG
     if (lowerBgFile.indexOf("weather") >= 0) {
       newMode = MODE_WEATHER;
-    }
-    // Coming from a special mode, switch to digital
-    else if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL || currentMode == MODE_WEATHER) {
+    } else if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL || currentMode == MODE_WEATHER) {
       newMode = MODE_ARC_DIGITAL;
     }
   }
 
-  // Only perform a mode switch if needed
   if (newMode != currentMode) {
     switchMode(newMode);
   } else {
-    // Clear the screen completely first
     tft.fillScreen(TFT_BLACK);
-
-    // Draw the new background
     drawBackground();
 
-    // Handle display updates based on mode
     if (currentMode == MODE_GIF_DIGITAL) {
-      // For GIF mode, only update animation
       updateGifDigitalBackground();
     } else if (currentMode == MODE_WEATHER) {
-      // For weather mode, always update
       updateWeatherTime();
     } else if (!isClockHidden) {
-      // For other modes, show clock if not hidden
       if (currentMode == MODE_ARC_DIGITAL) {
         resetArcDigitalVariables();
         updateDigitalTime();
@@ -302,22 +257,17 @@ void cycleBgImage() {
     }
   }
 
-  // Save settings
   saveSettings();
 }
 
 // Handle vertical position button press
 void cycleVerticalPosition() {
-  // GIF_DIGITAL mode should never show the clock
   if (currentMode == MODE_GIF_DIGITAL) {
-    // For GIF_DIGITAL mode, always hide the clock but allow cycling backgrounds
     isClockHidden = true;
     return;
   }
 
-  // Check the current mode
   if (currentMode == MODE_PIPBOY || currentMode == MODE_WEATHER) {
-    // For Pip-Boy and Weather modes, just cycle vertical positions
     if (currentVertPos == POS_TOP) {
       currentVertPos = POS_CENTER;
     } else if (currentVertPos == POS_CENTER) {
@@ -330,7 +280,6 @@ void cycleVerticalPosition() {
       isClockHidden = false;
     }
   } else {
-    // For digital modes, cycle through positions including analog mode
     if (currentMode == MODE_ARC_DIGITAL) {
       if (currentVertPos == POS_TOP) {
         currentVertPos = POS_CENTER;
@@ -340,42 +289,34 @@ void cycleVerticalPosition() {
         currentVertPos = POS_HIDDEN;
         isClockHidden = true;
       } else {
-        // Switch to analog mode
         currentMode = MODE_ARC_ANALOG;
         currentVertPos = POS_TOP;
         isClockHidden = false;
 
-        // Update settings and switch mode
         CLOCK_VERTICAL_OFFSET = currentVertPos;
         saveSettings();
         switchMode(MODE_ARC_ANALOG);
-        return;  // Exit early to avoid double updates
+        return;
       }
     } else if (currentMode == MODE_ARC_ANALOG) {
-      // Switch back to digital mode based on background type
       String bgFile = backgroundImages[currentBgIndex];
       currentMode = bgFile.endsWith(".gif") ? MODE_GIF_DIGITAL : MODE_ARC_DIGITAL;
       currentVertPos = POS_TOP;
       isClockHidden = false;
 
-      // Update settings and switch mode
       CLOCK_VERTICAL_OFFSET = currentVertPos;
       saveSettings();
       switchMode(currentMode);
-      return;  // Exit early to avoid double updates
+      return;
     }
   }
 
-  // Update CLOCK_VERTICAL_OFFSET
   CLOCK_VERTICAL_OFFSET = currentVertPos;
-
-  // Update the display
   drawBackground();
   if (!isClockHidden) {
     updateClockDisplay();
   }
 
-  // Save settings
   saveSettings();
 }
 
@@ -391,7 +332,6 @@ void checkButtonPress() {
       cycleBgImage();
       lastBgButtonPress = millis();
 
-      // Reset to weather-based colors when changing backgrounds in weather mode
       if (currentMode == MODE_WEATHER) {
         useWeatherColors = true;
       }
@@ -409,22 +349,19 @@ void checkButtonPress() {
   // Check color button (GPIO 25)
   if (digitalRead(CLR_BUTTON_PIN) == LOW) {
     if (millis() - lastClrButtonPress > debounceDelay) {
-      // Special handling for weather mode
       if (currentMode == MODE_WEATHER) {
-        // Toggle between automatic and manual color modes
         useWeatherColors = !useWeatherColors;
 
         if (useWeatherColors && currentWeather.valid) {
           updateWeatherLEDs();
         } else {
-          cycleLedColor();  // Cycle to next color in manual mode
+          cycleLedColor();
         }
       } else {
-        // Normal behavior for other modes
         cycleLedColor();
       }
 
-      updateLEDs();  // Update LEDs to show new color
+      updateLEDs();
       saveSettings();
       lastClrButtonPress = millis();
     }
@@ -435,69 +372,53 @@ void checkButtonPress() {
     if (!forceSaveActive) {
       forceSaveStartTime = millis();
       forceSaveActive = true;
-    } else if (millis() - forceSaveStartTime > 2000) {  // Hold for 2 seconds
-      // Force save settings
+    } else if (millis() - forceSaveStartTime > 2000) {
       saveSettings();
-
-      // Flash LEDs to confirm
       flashEffect();
-
-      // Reset state
       forceSaveActive = false;
 
-      // Wait until buttons are released
       while (digitalRead(BG_BUTTON_PIN) == LOW || digitalRead(CLR_BUTTON_PIN) == LOW) {
         delay(10);
       }
     }
   } else {
-    // Reset force save state when buttons released
     forceSaveActive = false;
   }
 }
 
 // Draw the background based on current settings
 void drawBackground() {
-  // Clear screen first
   tft.fillScreen(TFT_BLACK);
 
   if (numBgImages <= 0 || currentBgIndex < 0 || currentBgIndex >= numBgImages) {
-    return;  // No valid background to draw
+    return;
   }
 
   String bgFile = backgroundImages[currentBgIndex];
 
   if (currentMode == MODE_PIPBOY) {
-    // Draw the Pip-Boy interface
     drawPipBoyInterface();
   } else if (currentMode == MODE_WEATHER) {
-    // Draw the Weather interface
     drawWeatherInterface();
   } else if (currentMode == MODE_GIF_DIGITAL) {
-    // Draw the GIF background
     drawGifDigitalBackground(bgFile.c_str());
   } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
-    // Display JPEG background in other modes
     displayJPEGBackground(bgFile.c_str());
   }
 }
 
 // Update the clock display based on current settings
 void updateClockDisplay() {
-  // For GIF Digital mode, only update the animation, never the clock
   if (currentMode == MODE_GIF_DIGITAL) {
-    // Only update the GIF animation, no clock display
     updateGifDigitalBackground();
-    return;  // Exit after handling GIF mode
+    return;
   }
 
-  // For weather mode, call updateWeatherTime which handles hiding just the time
   if (currentMode == MODE_WEATHER) {
     updateWeatherTime();
-    return;  // Exit after handling weather mode
+    return;
   }
 
-  // Skip showing the clock text if hidden for other modes
   if (isClockHidden) return;
 
   switch (currentMode) {
@@ -520,13 +441,7 @@ void updateClockDisplay() {
 // Save current settings
 void saveSettings() {
   int ledColor = getCurrentLedColor();
-
-  // Use file storage for settings
-  saveSettingsToFile(
-    currentBgIndex,
-    currentMode,
-    currentVertPos,
-    ledColor);
+  saveSettingsToFile(currentBgIndex, currentMode, currentVertPos, ledColor);
 }
 
 // Load settings from file
@@ -543,10 +458,9 @@ void loadSettings() {
     &savedLedColor);
 
   if (!success) {
-    return;  // Use defaults if settings can't be loaded
+    return;
   }
 
-  // Apply settings if they are in valid range
   if (savedBgIndex >= 0 && savedBgIndex < numBgImages) {
     currentBgIndex = savedBgIndex;
   }
@@ -555,7 +469,8 @@ void loadSettings() {
     currentMode = savedMode;
   }
 
-  if (savedVertPos == POS_TOP || savedVertPos == POS_CENTER || savedVertPos == POS_BOTTOM || savedVertPos == POS_HIDDEN) {
+  if (savedVertPos == POS_TOP || savedVertPos == POS_CENTER || 
+      savedVertPos == POS_BOTTOM || savedVertPos == POS_HIDDEN) {
     currentVertPos = savedVertPos;
     isClockHidden = (savedVertPos == POS_HIDDEN);
     CLOCK_VERTICAL_OFFSET = currentVertPos;
@@ -571,15 +486,15 @@ void setup() {
   Serial.println("\nStarting Multi-Mode Digital Clock");
 
   // Configure buttons with pull-up resistors
-  pinMode(BG_BUTTON_PIN, INPUT_PULLUP);   // Background cycle button
-  pinMode(POS_BUTTON_PIN, INPUT_PULLUP);  // Position cycle button
-  pinMode(CLR_BUTTON_PIN, INPUT_PULLUP);  // Color cycle button
+  pinMode(BG_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(POS_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(CLR_BUTTON_PIN, INPUT_PULLUP);
 
   // Initialize NeoPixel LED ring
   pixels.begin();
   pixels.setBrightness(led_ring_brightness);
 
-  currentWeather.valid = false;  // Mark as invalid until first fetch
+  currentWeather.valid = false;
 
   // Initialize SPIFFS for image storage and settings storage
   if (!SPIFFS.begin(true)) {
@@ -591,12 +506,11 @@ void setup() {
 
   // Turn on all LEDs
   for (int i = 0; i < NUMPIXELS; i++) {
-    pixels.setPixelColor(i, pixels.Color(0, 20, 255));  // Default blue
+    pixels.setPixelColor(i, pixels.Color(0, 20, 255));
     pixels.show();
     delay(50);
   }
 
-  // Flash the LEDs to show initialization
   flashEffect();
 
   // Initialize SPI for the display
@@ -606,7 +520,7 @@ void setup() {
   // Initialize TFT display
   tft.init();
   tft.setRotation(0);
-  SPI.setFrequency(27000000);  // Set SPI clock to 27MHz for stability
+  SPI.setFrequency(27000000);
   tft.fillScreen(TFT_BLACK);
 
   // Get display dimensions
@@ -618,27 +532,6 @@ void setup() {
   TJpgDec.setJpgScale(1);
   TJpgDec.setSwapBytes(true);
   TJpgDec.setCallback(tft_output);
-
-  // Test JPEG decoder with default image
-  if (SPIFFS.exists("/00_ironman.jpg")) {
-    File testFile = SPIFFS.open("/00_ironman.jpg", "r");
-    if (testFile) {
-      size_t testSize = testFile.size();
-      if (testSize > 100 && testSize < 150000) {
-        uint8_t* testBuf = (uint8_t*)malloc(testSize);
-        if (testBuf) {
-          testFile.read(testBuf, testSize);
-          testFile.close();
-
-          tft.fillScreen(TFT_BLACK);
-          TJpgDec.drawJpg(0, 0, testBuf, testSize);
-          free(testBuf);
-        } else {
-          testFile.close();
-        }
-      }
-    }
-  }
 
   // Connect to WiFi
   Serial.print("Connecting to WiFi");
@@ -654,11 +547,8 @@ void setup() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nWiFi connected!");
-
-    // Setup time synchronization
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
-    // Display connection status
     tft.fillScreen(TFT_BLACK);
     tft.setTextSize(2);
     tft.setTextColor(TFT_GREEN);
@@ -670,7 +560,6 @@ void setup() {
   } else {
     Serial.println("\nWiFi connection failed");
 
-    // Display status
     tft.fillScreen(TFT_BLACK);
     tft.setTextSize(2);
     tft.setTextColor(TFT_RED);
@@ -715,16 +604,11 @@ void loop() {
     needClockRefresh = false;
     drawBackground();
 
-    // For GIF_DIGITAL, only update the animation, not the clock
     if (currentMode == MODE_GIF_DIGITAL) {
       updateGifDigitalBackground();
-    }
-    // For weather mode, always update regardless of isClockHidden
-    else if (currentMode == MODE_WEATHER) {
+    } else if (currentMode == MODE_WEATHER) {
       updateClockDisplay();
-    }
-    // For other modes, check if clock is hidden
-    else if (!isClockHidden) {
+    } else if (!isClockHidden) {
       updateClockDisplay();
     }
   }
@@ -733,34 +617,24 @@ void loop() {
   bool timeUpdateNeeded = (currentMillis - lastTimeCheck >= 1000);
   bool colonUpdateNeeded = (currentMillis - lastColonBlink >= 500);
 
-  // Special case for GIF_DIGITAL mode - only update the GIF animation, not the clock
+  // Handle different modes
   if (currentMode == MODE_GIF_DIGITAL) {
-    // Always update the GIF animation
     updateGifDigitalBackground();
 
-    // Still update time variables in the background, but don't display
     if (timeUpdateNeeded) {
       lastTimeCheck = currentMillis;
       updateTimeAndDate();
     }
-  }
-  // Special case for weather mode - always update weather even if clock part is hidden
-  else if (currentMode == MODE_WEATHER) {
+  } else if (currentMode == MODE_WEATHER) {
     if (timeUpdateNeeded) {
       lastTimeCheck = currentMillis;
       updateTimeAndDate();
-      updateWeatherTime();  // This function will handle hiding just the time
+      updateWeatherTime();
     }
 
-    // Update weather icon if needed
     updateWeatherIcon();
-
-    // Check if it's time to update weather data
     updateWeatherData();
-  }
-  // For other modes, check if clock is hidden
-  else if (!isClockHidden) {
-    // Update based on current mode
+  } else if (!isClockHidden) {
     if (currentMode == MODE_ARC_DIGITAL) {
       if (timeUpdateNeeded) {
         lastTimeCheck = currentMillis;
@@ -768,7 +642,6 @@ void loop() {
         updateDigitalTime();
       }
 
-      // Handle blinking colon
       if (colonUpdateNeeded) {
         lastColonBlink = currentMillis;
         updateArcDigitalColon();
@@ -778,7 +651,6 @@ void loop() {
         lastTimeCheck = currentMillis;
         updateTimeAndDate();
 
-        // Check if full refresh is needed
         if (needClockRefresh) {
           needClockRefresh = false;
           drawBackground();
@@ -795,16 +667,13 @@ void loop() {
         updatePipBoyTime();
       }
 
-      // Update the GIF animation
       updatePipBoyGif();
     }
   } else {
-    // Even if clock is hidden, still update animations for Pip-Boy
     if (currentMode == MODE_PIPBOY) {
       updatePipBoyGif();
     }
 
-    // Even if clock is hidden, still update time variables
     if (timeUpdateNeeded) {
       lastTimeCheck = currentMillis;
       updateTimeAndDate();
@@ -812,7 +681,8 @@ void loop() {
   }
 
   // LED ring effect every hour or half-hour
-  if (seconds == 0 && (minutes == 0 || minutes == 30) && (currentMillis - lastTimeCheck < 1000)) {
+  if (seconds == 0 && (minutes == 0 || minutes == 30) && 
+      (currentMillis - lastTimeCheck < 1000)) {
     flashEffect();
   }
 }
