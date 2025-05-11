@@ -83,19 +83,13 @@ void GIFDrawDigital(GIFDRAW *pDraw) {
 
 // Load and display a GIF background
 bool displayGIFDigitalBackground(const char *filename) {
-  Serial.print("GIF Digital: Loading background: ");
-  Serial.println(filename);
-
   // Skip vaultboy.gif - this is reserved for Pip-Boy mode
   if (strstr(filename, "vaultboy.gif") != NULL) {
-    Serial.println("Skipping vaultboy.gif - this is for Pip-Boy mode");
     return false;
   }
 
   // Check if file exists
   if (!SPIFFS.exists(filename)) {
-    Serial.print("ERROR: GIF file not found: ");
-    Serial.println(filename);
     return false;
   }
 
@@ -121,15 +115,12 @@ bool displayGIFDigitalBackground(const char *filename) {
   // Open the file
   File f = SPIFFS.open(filename, "r");
   if (!f) {
-    Serial.print("Failed to open GIF file: ");
-    Serial.println(filename);
     return false;
   }
 
   // Get file size
   gifDigitalSize = f.size();
   if (gifDigitalSize == 0) {
-    Serial.println("GIF file is empty");
     f.close();
     return false;
   }
@@ -137,7 +128,6 @@ bool displayGIFDigitalBackground(const char *filename) {
   // Allocate memory for the GIF data
   gifDigitalBuffer = (uint8_t *)malloc(gifDigitalSize);
   if (gifDigitalBuffer == NULL) {
-    Serial.println("Failed to allocate memory for GIF");
     f.close();
     gifDigitalSize = 0;
     return false;
@@ -148,7 +138,6 @@ bool displayGIFDigitalBackground(const char *filename) {
   f.close();
 
   if (bytesRead != gifDigitalSize) {
-    Serial.println("Failed to read entire GIF file");
     free(gifDigitalBuffer);
     gifDigitalBuffer = NULL;
     gifDigitalSize = 0;
@@ -156,16 +145,10 @@ bool displayGIFDigitalBackground(const char *filename) {
   }
 
   // Initialize the GIF decoder
-  Serial.println("Initializing GIF decoder...");
   gifDigitalClock.begin(GIF_PALETTE_RGB565_LE);
-
-  // Debug GIF information
-  Serial.print("GIF byte order: ");
-  Serial.println("RGB565_LE (little endian)");
 
   // Open the GIF from the buffer with our custom draw callback
   if (!gifDigitalClock.open(gifDigitalBuffer, gifDigitalSize, GIFDrawDigital)) {
-    Serial.println("Failed to decode GIF file");
     free(gifDigitalBuffer);
     gifDigitalBuffer = NULL;
     gifDigitalSize = 0;
@@ -174,7 +157,6 @@ bool displayGIFDigitalBackground(const char *filename) {
 
   // Display the first frame
   if (!gifDigitalClock.playFrame(true, NULL)) {
-    Serial.println("Failed to display first GIF frame");
     gifDigitalClock.close();
     free(gifDigitalBuffer);
     gifDigitalBuffer = NULL;
@@ -182,7 +164,6 @@ bool displayGIFDigitalBackground(const char *filename) {
     return false;
   }
 
-  Serial.println("SUCCESS: GIF loaded and first frame displayed!");
   return true;
 }
 
@@ -193,11 +174,8 @@ void drawGifDigitalBackground(const char *gifFilename) {
 
   // Try to load GIF background using the provided filename
   if (!displayGIFDigitalBackground(gifFilename)) {
-    Serial.println("No GIF background found or error loading, using plain background");
+    // Fallback to plain background if GIF loading fails
   }
-
-  Serial.print("Clock vertical position offset: ");
-  Serial.println(CLOCK_VERTICAL_OFFSET);
 }
 
 // Reset variables to force redraw of digital clock
@@ -224,12 +202,10 @@ void updateGifDigitalBackground() {
 // Clean up resources when switching away from GIF Digital mode
 void cleanupGifDigitalMode() {
   if (gifDigitalBuffer != NULL) {
-    Serial.println("Cleaning up GIF Digital resources");
     gifDigitalClock.close();
     free(gifDigitalBuffer);
     gifDigitalBuffer = NULL;
     gifDigitalSize = 0;
-    Serial.println("GIF Digital resources cleaned up");
 
     // Reset variables to force redraw next time
     prevHoursGif = -1;
@@ -257,11 +233,7 @@ void updateGifDigitalTime() {
     if (seconds != prevSecondsGif) {
       // Format seconds with leading zero if needed
       char timeStr[6];
-      if (seconds < 10) {
-        sprintf(timeStr, "0%d", seconds);
-      } else {
-        sprintf(timeStr, "%d", seconds);
-      }
+      sprintf(timeStr, seconds < 10 ? "0%d" : "%d", seconds);
 
       // Draw seconds with semi-transparent background
       tft.setTextSize(2);
@@ -274,11 +246,7 @@ void updateGifDigitalTime() {
       // Format hours with leading zero if needed
       char timeStr[6];
       int displayHours = is24Hour ? hours : (hours > 12 ? hours - 12 : (hours == 0 ? 12 : hours));
-      if (displayHours < 10) {
-        sprintf(timeStr, "0%d", displayHours);
-      } else {
-        sprintf(timeStr, "%d", displayHours);
-      }
+      sprintf(timeStr, displayHours < 10 ? "0%d" : "%d", displayHours);
 
       // Draw hours text with semi-transparent background
       tft.setTextSize(4);
@@ -309,11 +277,7 @@ void updateGifDigitalTime() {
     if (minutes != prevMinutesGif) {
       // Format minutes with leading zero if needed
       char timeStr[6];
-      if (minutes < 10) {
-        sprintf(timeStr, "0%d", minutes);
-      } else {
-        sprintf(timeStr, "%d", minutes);
-      }
+      sprintf(timeStr, minutes < 10 ? "0%d" : "%d", minutes);
 
       // Draw minutes text with semi-transparent background - apply vertical offset
       tft.setTextSize(4);
@@ -336,11 +300,7 @@ void updateGifDigitalTime() {
       // Draw AM/PM indicator with semi-transparent background - apply vertical offset
       tft.setTextSize(2);
       tft.setCursor(screenCenterX - 10, screenCenterY + 20 + CLOCK_VERTICAL_OFFSET);
-      if (isPM) {
-        tft.println("PM");
-      } else {
-        tft.println("AM");
-      }
+      tft.println(isPM ? "PM" : "AM");
     }
 
     // Save current state for next comparison

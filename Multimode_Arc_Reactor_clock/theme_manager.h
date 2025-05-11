@@ -1,9 +1,7 @@
 /*
- * theme_manager.h - Simplified theme management system
+ * theme_manager.h - Theme management system
  * For Multi-Mode Digital Clock project
- * 
- * REVISED VERSION - Allows custom LED colors for all modes
- * with support for weather-based color changes
+ * Allows custom LED colors for all modes with weather-based color changes
  */
 
 #ifndef THEME_MANAGER_H
@@ -20,9 +18,7 @@
 #define MODE_WEATHER 4
 #define MODE_TOTAL 5
 
-// LED color IDs for consistency
-// When adding a new color, make sure to update this to add a new #define
-// along with LEDColorDefinition ledColors[COLOR_TOTAL]
+// LED color IDs
 #define COLOR_IRONMAN_RED 0
 #define COLOR_SPIDERMAN_RED 1
 #define COLOR_RED 2
@@ -108,14 +104,12 @@ void cycleLedColor();
 void showColorNameOverlay();
 const char* getColorName(int colorIndex);
 
-// Simplified function that just logs the background being loaded
+// Set theme based on background filename
 void setThemeFromFilename(const char* filename) {
-  Serial.print("Loading background: ");
-  Serial.println(filename);
   // No color changes - user preferences are preserved
 }
 
-// Simplified function to update LED color
+// Update LED color
 void updateModeColorsFromLedColor(int colorIndex) {
   if (colorIndex < 0 || colorIndex >= COLOR_TOTAL) {
     colorIndex = COLOR_BLUE;  // Default to blue if invalid
@@ -124,7 +118,7 @@ void updateModeColorsFromLedColor(int colorIndex) {
   currentLedColor = colorIndex;
 }
 
-// Get color name directly from the structure
+// Get color name
 const char* getColorName(int colorIndex) {
   if (colorIndex >= 0 && colorIndex < COLOR_TOTAL) {
     return ledColors[colorIndex].name;
@@ -135,7 +129,6 @@ const char* getColorName(int colorIndex) {
 // Cycle through available LED colors
 void cycleLedColor() {
   // Skip the weather-specific colors in manual cycling
-  // as they're meant for automatic use by the weather mode
   currentLedColor = (currentLedColor + 1) % COLOR_TOTAL;
 
   // Skip the weather colors when cycling manually
@@ -150,7 +143,6 @@ void cycleLedColor() {
 // Get the current second ring color based on mode
 uint16_t getCurrentSecondRingColor() {
   // For Pip-Boy mode, we'll still use green for the SCREEN elements
-  // (since green is characteristic of the Pip-Boy interface)
   if (currentMode == MODE_PIPBOY) {
     return ledColors[COLOR_GREEN].tft_color;
   }

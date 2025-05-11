@@ -10,7 +10,7 @@
 #include <TFT_eSPI.h>
 #include "utils.h"
 #include <AnimatedGIF.h>
-#include <FS.h>  // Include FS for File class
+#include <FS.h>
 
 // Function prototypes
 void drawPipBoyInterface();
@@ -26,8 +26,7 @@ const int figureX = 75;     // Position for Vault Boy figure
 uint8_t *gifBuffer = NULL;  // Buffer to hold GIF data
 int gifSize = 0;
 
-// GIF drawing function for the AnimatedGIF library
-// GIF drawing function for the AnimatedGIF library
+// GIF drawing callback for the AnimatedGIF library
 void GIFDraw(GIFDRAW *pDraw) {
   uint8_t *s;
   uint16_t *d, *usPalette, usTemp[320];
@@ -72,23 +71,18 @@ bool loadAndInitGIF(const char *gifPath) {
 
   // Check if the file exists
   if (!SPIFFS.exists(gifPath)) {
-    Serial.print("GIF file not found: ");
-    Serial.println(gifPath);
     return false;
   }
 
   // Open the file
   File f = SPIFFS.open(gifPath, "r");
   if (!f) {
-    Serial.print("Failed to open GIF file: ");
-    Serial.println(gifPath);
     return false;
   }
 
   // Get file size
   gifSize = f.size();
   if (gifSize == 0) {
-    Serial.println("GIF file is empty");
     f.close();
     return false;
   }
@@ -96,7 +90,6 @@ bool loadAndInitGIF(const char *gifPath) {
   // Allocate memory for the GIF data
   gifBuffer = (uint8_t *)malloc(gifSize);
   if (gifBuffer == NULL) {
-    Serial.println("Failed to allocate memory for GIF");
     f.close();
     gifSize = 0;
     return false;
@@ -107,7 +100,6 @@ bool loadAndInitGIF(const char *gifPath) {
   f.close();
 
   if (bytesRead != gifSize) {
-    Serial.println("Failed to read entire GIF file");
     free(gifBuffer);
     gifBuffer = NULL;
     gifSize = 0;
@@ -119,15 +111,12 @@ bool loadAndInitGIF(const char *gifPath) {
 
   // Open the GIF from the buffer
   if (!gif.open(gifBuffer, gifSize, GIFDraw)) {
-    Serial.println("Failed to decode GIF file");
     free(gifBuffer);
     gifBuffer = NULL;
     gifSize = 0;
     return false;
   }
 
-  // Successfully loaded and initialized the GIF
-  Serial.println("GIF loaded and initialized successfully");
   return true;
 }
 
@@ -151,7 +140,7 @@ void drawPipBoyInterface() {
   tft.setCursor(screenCenterX - (dateWidth / 2), 50);
   tft.println(dateStr);
 
-  // Try to load and display the GIF using the improved function
+  // Try to load and display the GIF
   bool gifLoaded = loadAndInitGIF("/vaultboy.gif");
 
   // If GIF loaded successfully, display the first frame
@@ -277,15 +266,14 @@ void updatePipBoyTime() {
   tft.println(hours >= 12 ? "PM" : "AM");
 }
 
-// Function to update the GIF animation - fixed version
+// Function to update the GIF animation
 void updatePipBoyGif() {
   // Check if GIF exists and is loaded
   if (gifBuffer != NULL && gifSize > 0) {
     // Try to play the next frame
     if (!gif.playFrame(true, NULL)) {
       // End of animation, reset to beginning
-      gif.reset();  // reset() returns void, not bool
-      // The library will catch errors on next update
+      gif.reset();
     }
   }
 }
@@ -293,12 +281,10 @@ void updatePipBoyGif() {
 // Clean up resources when switching away from Pip-Boy mode
 void cleanupPipBoyMode() {
   if (gifBuffer != NULL) {
-    Serial.println("Cleaning up Pip-Boy GIF resources");
     gif.close();
     free(gifBuffer);
     gifBuffer = NULL;
     gifSize = 0;
-    Serial.println("Pip-Boy GIF resources cleaned up");
   }
 }
 

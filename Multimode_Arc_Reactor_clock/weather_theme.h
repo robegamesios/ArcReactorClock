@@ -1,5 +1,5 @@
 /*
- * weather_theme.h - Minimal Weather Display Mode (No GIFs)
+ * weather_theme.h - Weather Display Mode
  * For Multi-Mode Digital Clock project
  * Features current weather data from OpenWeatherMap API
  */
@@ -17,21 +17,18 @@
 #include "weather_led.h"
 
 // Weather display mode ID
-#define MODE_WEATHER 4  // Weather mode will be mode #4
-#define MODE_TOTAL 5    // Update the total mode count
+#define MODE_WEATHER 4  // Weather mode is mode #4
 
 // OpenWeatherMap API settings
-const char* weatherApiKey = WEATHER_API_KEY;
-const long weatherCityId = WEATHER_CITY_ID;
-char weatherUnits[10] = WEATHER_UNITS;
+extern const char* weatherApiKey;
+extern const long weatherCityId;
+extern char weatherUnits[10];
 
-// Global variables - minimized
-// The definition of currentWeather should be in the main sketch or in a .cpp file
-// Here we only have the declaration (extern) since it's already in weather_data.h
-unsigned long lastWeatherUpdate = 0;
-const unsigned long weatherUpdateInterval = 10 * 60 * 1000;  // 10 minutes
+// External references
+extern unsigned long lastWeatherUpdate;
+extern const unsigned long weatherUpdateInterval;
 
-// Colors for weather theme - now using black background
+// Colors for weather theme
 #define WEATHER_BG TFT_BLACK    // Black background
 #define WEATHER_TEXT TFT_WHITE  // White for text
 
@@ -39,10 +36,10 @@ const unsigned long weatherUpdateInterval = 10 * 60 * 1000;  // 10 minutes
 int prevWeatherHours = -1, prevWeatherMinutes = -1, prevWeatherSeconds = -1;
 
 // Arc/Circle settings for seconds indicator
-#define WEATHER_SECONDS_RADIUS 115   // Radius for seconds circle (close to screen edge)
+#define WEATHER_SECONDS_RADIUS 115   // Radius for seconds circle
 #define WEATHER_SECONDS_THICKNESS 4  // Thickness of the seconds ring
 
-// Weather icon position (matching Pip-Boy layout)
+// Weather icon position
 #define WEATHER_ICON_X 55
 #define WEATHER_ICON_Y 130
 
@@ -58,8 +55,6 @@ void drawWeatherSecondsIndicator();
 void updateWeatherSecondsIndicator();
 void updateWeatherIcon();
 void drawDegreeSymbol(int x, int y, int size, uint16_t color);
-// Note: We're using getCurrentSecondRingColor() from theme_manager.h
-// No need to declare it here
 
 // Initialize the weather theme
 void initWeatherTheme() {
@@ -72,63 +67,48 @@ void initWeatherTheme() {
   updateWeatherData();
 }
 
-// Fetch weather data from OpenWeatherMap API - simplified version
+// Fetch weather data from OpenWeatherMap API
 bool fetchWeatherData() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("No WiFi connection for weather update");
     return false;
   }
-
-  Serial.println("Fetching weather data...");
 
   WiFiClient client;
   HTTPClient http;
 
-  // Construct the URL using city ID for more reliable location lookup
-  char url[150];  // Fixed buffer size
+  // Construct the URL using city ID
+  char url[150];
   snprintf(url, sizeof(url),
            "http://api.openweathermap.org/data/2.5/weather?id=%ld&units=%s&appid=%s",
            weatherCityId, weatherUnits, weatherApiKey);
-
-  Serial.print("Weather URL: ");
-  Serial.println(url);
 
   http.begin(client, url);
   int httpCode = http.GET();
 
   if (httpCode != HTTP_CODE_OK) {
-    Serial.print("HTTP Get failed, error: ");
-    Serial.println(httpCode);
     http.end();
     return false;
   }
 
-  // Use ArduinoJson to parse the response - minimal buffer size
+  // Use ArduinoJson to parse the response
   const size_t capacity = JSON_OBJECT_SIZE(5) + JSON_ARRAY_SIZE(1) + 200;
   DynamicJsonDocument doc(capacity);
 
   String payload = http.getString();
-  Serial.println("Weather API response:");
-  Serial.println(payload);
-
   DeserializationError error = deserializeJson(doc, payload);
+  
   if (error) {
-    Serial.print(F("JSON parsing failed: "));
-    Serial.println(error.c_str());
     http.end();
     return false;
   }
 
-  // Extract relevant weather data with minimal error checking
+  // Extract weather data
   if (doc.containsKey("weather") && doc["weather"].is<JsonArray>() && doc["weather"].size() > 0) {
     strncpy(currentWeather.description, doc["weather"][0]["description"].as<const char*>(), sizeof(currentWeather.description) - 1);
     currentWeather.description[sizeof(currentWeather.description) - 1] = '\0';
 
     strncpy(currentWeather.iconCode, doc["weather"][0]["icon"].as<const char*>(), sizeof(currentWeather.iconCode) - 1);
     currentWeather.iconCode[sizeof(currentWeather.iconCode) - 1] = '\0';
-
-    Serial.print("Weather icon code: ");
-    Serial.println(currentWeather.iconCode);
   }
 
   if (doc.containsKey("main")) {
@@ -147,8 +127,6 @@ bool fetchWeatherData() {
   currentWeather.valid = true;
 
   http.end();
-
-  Serial.println("Weather data fetched successfully");
   return true;
 }
 
@@ -158,30 +136,23 @@ void updateWeatherData() {
 
   // Check if it's time for an update
   if (!currentWeather.valid || (currentMillis - lastWeatherUpdate >= weatherUpdateInterval)) {
-    Serial.println("Attempting to update weather data...");
     bool dataUpdated = fetchWeatherData();
 
     if (dataUpdated) {
       lastWeatherUpdate = currentMillis;
-
-      // IMPORTANT: Always update LEDs immediately after successful weather data update
-      Serial.println("Weather data updated successfully, updating LEDs...");
-      setWeatherLEDColorDirectly();  // Use the direct function
-    } else {
-      Serial.println("Weather data update failed");
+      setWeatherLEDColorDirectly();
     }
   }
 }
 
-// Update weather icon function (empty placeholder since we use static icons now)
+// Placeholder for animated weather icon updates
 void updateWeatherIcon() {
   // Static icons, nothing to update
-  // This function is kept as a placeholder to satisfy main sketch calls
 }
 
-// Clean up resources when switching away from Weather mode
+// Cleanup resources when switching from Weather mode
 void cleanupWeatherMode() {
-  // Nothing to clean up in this minimal version
+  // Nothing to clean up in this version
 }
 
 // Draw a proper degree symbol
@@ -190,30 +161,22 @@ void drawDegreeSymbol(int x, int y, int size, uint16_t color) {
   tft.drawCircle(x, y, radius, color);
 }
 
-// Draw a static weather icon based on the icon code - moved to left side like vault boy
+// Draw a static weather icon based on the icon code
 void drawWeatherIcon() {
-  // Set icon position to left side similar to vault boy
+  // Set icon position
   int iconX = WEATHER_ICON_X;
   int iconY = WEATHER_ICON_Y;
 
   // Clear area for the icon
   tft.fillRect(iconX - 40, iconY - 40, 80, 80, WEATHER_BG);
 
-  // Debug output
-  Serial.print("Icon code: ");
-  Serial.println(currentWeather.iconCode);
-
   // Check if we have a valid icon code
   bool isDay = true;
   if (strlen(currentWeather.iconCode) >= 3) {
     isDay = currentWeather.iconCode[2] == 'd';
-  } else {
-    Serial.println("Invalid icon code, using default");
   }
 
   // Draw weather icon based on icon code
-  // For reference: https://openweathermap.org/weather-conditions
-
   // Clear or Few Clouds
   if (strcmp(currentWeather.iconCode, "01d") == 0 || strcmp(currentWeather.iconCode, "01n") == 0) {
     // Clear sky
@@ -241,13 +204,15 @@ void drawWeatherIcon() {
     }
   }
   // Clouds
-  else if (strcmp(currentWeather.iconCode, "03d") == 0 || strcmp(currentWeather.iconCode, "03n") == 0 || strcmp(currentWeather.iconCode, "04d") == 0 || strcmp(currentWeather.iconCode, "04n") == 0) {
+  else if (strcmp(currentWeather.iconCode, "03d") == 0 || strcmp(currentWeather.iconCode, "03n") == 0 || 
+           strcmp(currentWeather.iconCode, "04d") == 0 || strcmp(currentWeather.iconCode, "04n") == 0) {
     // Clouds
     tft.fillRoundRect(iconX - 25, iconY - 10, 50, 20, 10, TFT_LIGHTGREY);  // Main cloud
     tft.fillRoundRect(iconX - 15, iconY - 20, 40, 15, 8, TFT_WHITE);       // Top cloud
   }
   // Rain
-  else if (strcmp(currentWeather.iconCode, "09d") == 0 || strcmp(currentWeather.iconCode, "09n") == 0 || strcmp(currentWeather.iconCode, "10d") == 0 || strcmp(currentWeather.iconCode, "10n") == 0) {
+  else if (strcmp(currentWeather.iconCode, "09d") == 0 || strcmp(currentWeather.iconCode, "09n") == 0 || 
+           strcmp(currentWeather.iconCode, "10d") == 0 || strcmp(currentWeather.iconCode, "10n") == 0) {
     // Rain
     tft.fillRoundRect(iconX - 25, iconY - 15, 50, 20, 10, TFT_LIGHTGREY);  // Cloud
     // Raindrops
@@ -281,8 +246,8 @@ void drawWeatherIcon() {
   }
   // Unknown/Default
   else {
-    // Unknown weather - draw a better symbol
-    tft.fillRoundRect(iconX - 25, iconY - 15, 50, 30, 8, TFT_LIGHTGREY);  // Cloud outline
+    // Unknown weather
+    tft.fillRoundRect(iconX - 25, iconY - 15, 50, 30, 8, TFT_LIGHTGREY);
 
     // Question mark
     tft.setTextColor(WEATHER_TEXT);
@@ -294,7 +259,7 @@ void drawWeatherIcon() {
 
 // Draw the initial Weather interface
 void drawWeatherInterface() {
-  // Clear the display with black background
+  // Clear the display
   tft.fillScreen(WEATHER_BG);
 
   // Draw day of week at top
@@ -314,10 +279,10 @@ void drawWeatherInterface() {
 
   // Display weather information
   if (currentWeather.valid) {
-    // Draw the static weather icon (on left side now)
+    // Draw the static weather icon
     drawWeatherIcon();
 
-    // Draw weather description below day/date - centered
+    // Draw weather description below day/date
     tft.setTextSize(1);
     char desc[24];
     strncpy(desc, currentWeather.description, sizeof(desc));
@@ -331,7 +296,7 @@ void drawWeatherInterface() {
     tft.setCursor(screenCenterX - (descWidth / 2), 70);
     tft.print(desc);
 
-    // Draw temperature information - moved more to the left to avoid seconds ring
+    // Draw temperature information
     tft.setTextSize(3);
 
     // Current temperature
@@ -394,19 +359,16 @@ void drawWeatherInterface() {
   tft.setCursor(screenCenterX - (timeWidth / 2), 195);
   tft.println(timeStr);
 
-  // Draw seconds indicator ring around the screen edge
+  // Draw seconds indicator ring
   drawWeatherSecondsIndicator();
 }
 
-// Draw the seconds indicator - as an outer ring like in analog mode
+// Draw the seconds indicator as an outer ring
 void drawWeatherSecondsIndicator() {
-  // Get the second ring color from theme manager (already defined function)
+  // Get the second ring color
   uint16_t secondRingColor = getCurrentSecondRingColor();
 
-  // Calculate the angle for current second (0-59 seconds = 0-360 degrees)
-  float angle = (seconds * 6) - 90;  // -90 to start at 12 o'clock position
-
-  // Draw the seconds as segments around the outer edge of the screen
+  // Draw the seconds as segments around the outer edge
   for (int i = 0; i < seconds; i++) {
     float startAngle = (i * 6 - 90) * DEG_TO_RAD;
     float endAngle = ((i + 1) * 6 - 90) * DEG_TO_RAD;
@@ -420,7 +382,7 @@ void drawWeatherSecondsIndicator() {
     // Draw a line segment for each second
     tft.drawLine(x1, y1, x2, y2, secondRingColor);
 
-    // Make it thicker by drawing additional pixels (reduced number for memory savings)
+    // Make it thicker
     for (int t = 1; t < WEATHER_SECONDS_THICKNESS; t++) {
       int x1Inner = screenCenterX + cos(startAngle) * (WEATHER_SECONDS_RADIUS - t);
       int y1Inner = screenCenterY + sin(startAngle) * (WEATHER_SECONDS_RADIUS - t);
@@ -438,7 +400,7 @@ void updateWeatherSecondsIndicator() {
   static int lastSecond = -1;
   if (seconds == lastSecond) return;
 
-  // Get the second ring color from theme manager
+  // Get the second ring color
   uint16_t secondRingColor = getCurrentSecondRingColor();
 
   // If seconds reset to 0, clear screen and redraw everything
@@ -462,7 +424,7 @@ void updateWeatherSecondsIndicator() {
   // Draw a line segment for the new second
   tft.drawLine(x1, y1, x2, y2, secondRingColor);
 
-  // Make it thicker by drawing additional pixels (reduced for memory savings)
+  // Make it thicker
   for (int t = 1; t < WEATHER_SECONDS_THICKNESS; t++) {
     int x1Inner = screenCenterX + cos(startAngle) * (WEATHER_SECONDS_RADIUS - t);
     int y1Inner = screenCenterY + sin(startAngle) * (WEATHER_SECONDS_RADIUS - t);

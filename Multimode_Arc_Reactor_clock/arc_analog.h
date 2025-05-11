@@ -25,7 +25,6 @@ float prevMinuteAngle = -1, prevHourAngle = -1;
 // Define colors for better visibility
 #define HOUR_HAND_COLOR TFT_WHITE
 #define MINUTE_HAND_COLOR 0xFFE0  // Bright yellow
-// Second ring color will be dynamic based on theme
 #define CENTER_DOT_COLOR 0x07FF   // Cyan
 #define HOUR_MARKER_COLOR 0x07FF  // Cyan for hour markers
 
