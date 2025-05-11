@@ -19,11 +19,9 @@
 #define MODE_TOTAL 5    // Update the total mode count
 
 // OpenWeatherMap API settings
-const char* weatherApiKey = "68734d0ae02de33873b24a287dbe6635"; // Your OpenWeatherMap API key
-
-// Using city ID instead of city name for more reliable lookup
-const long weatherCityId = 5405380; // City ID for Vallejo, CA
-char weatherUnits[10] = "imperial"; // imperial for °F, metric for °C
+const char* weatherApiKey = WEATHER_API_KEY;
+const long weatherCityId = WEATHER_CITY_ID;
+char weatherUnits[10] = WEATHER_UNITS;
 
 // Minimal weather data structure
 struct WeatherData {

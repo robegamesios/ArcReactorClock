@@ -20,6 +20,16 @@
 #include "simple_storage.h"
 #include "gif_digital.h"
 
+// Project specific header files
+#include "config.h"
+#include "utils.h"
+#include "theme_manager.h"
+#include "led_controls.h"
+#include "arc_digital.h"
+#include "arc_analog.h"
+#include "pipboy.h"
+#include "weather_theme.h"
+
 // Hardware pins
 #define LED_PIN 21         // NeoPixel LED ring pin
 #define NUMPIXELS 35       // Number of LEDs in the ring
@@ -54,24 +64,14 @@ TFT_eSPI tft = TFT_eSPI();
 #define POS_BOTTOM 80
 #define POS_HIDDEN 999  // Special value to hide the clock
 
-// For now, include these header files later after defining variables
-// they need access to
-#include "utils.h"
-#include "theme_manager.h"
-#include "led_controls.h"
-#include "arc_digital.h"
-#include "arc_analog.h"
-#include "pipboy.h"
-#include "weather_theme.h"
-
 // WiFi settings - enter your credentials here
-const char* ssid = "ASUS-RT-AX56U-2.4G-2.4G-ext";  // Enter your WiFi network name
-const char* password = "tocino25";        // Enter your WiFi password
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 
 // Time settings
-const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = -28800;    // PST offset (-8 hours * 3600 seconds/hour)
-const int daylightOffset_sec = 3600;  // Daylight saving time adjustment (1 hour)
+const char* ntpServer = NTP_SERVER;
+const long gmtOffset_sec = GMT_OFFSET_SEC;
+const int daylightOffset_sec = DAYLIGHT_OFFSET_SEC;
 
 // Display variables
 int screenCenterX;
