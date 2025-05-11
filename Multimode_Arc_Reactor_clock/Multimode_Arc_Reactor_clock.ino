@@ -22,13 +22,15 @@
 
 // Project specific header files
 #include "config.h"
+#include "weather_data.h"
 #include "utils.h"
 #include "theme_manager.h"
 #include "led_controls.h"
+#include "weather_led.h"
+#include "weather_theme.h"
 #include "arc_digital.h"
 #include "arc_analog.h"
 #include "pipboy.h"
-#include "weather_theme.h"
 
 // Hardware pins
 #define LED_PIN 21         // NeoPixel LED ring pin
@@ -49,7 +51,9 @@ int led_ring_brightness_flash = 250;  // Flash brightness (0-255)
 #define MODE_WEATHER 4
 #define MODE_TOTAL 5
 
-#define MAX_BACKGROUNDS 99 // Set max number of backgrounds
+#define MAX_BACKGROUNDS 99  // Set max number of backgrounds
+
+WeatherData currentWeather = { "", "", 0, 0, 0, 0, 0, 0, 0, false };
 
 // Current mode variable
 int currentMode = MODE_ARC_DIGITAL;  // Start with Arc Reactor digital mode
@@ -201,7 +205,7 @@ void prioritizeIronManBackground() {
   currentBgIndex = 0;
 }
 
-// Switch to a different clock mode - modified for button control
+// Switch to a different clock mode - modified to properly handle weather mode
 void switchMode(int mode) {
   // Store old mode
   int oldMode = currentMode;
@@ -227,7 +231,19 @@ void switchMode(int mode) {
 
   // Initialize the weather mode if switching to it
   if (mode == MODE_WEATHER) {
+    Serial.println("Initializing Weather mode");
     initWeatherTheme();
+
+    // Wait briefly for weather data if needed
+    delay(100);
+
+    // Set LED color directly based on temperature
+    if (currentWeather.valid) {
+      Serial.println("Setting LED color based on current temperature");
+      setWeatherLEDColorDirectly();
+    } else {
+      Serial.println("No valid weather data yet, will set LED color when data arrives");
+    }
   }
 
   // Draw appropriate interface based on mode
@@ -270,13 +286,12 @@ void cycleBgImage() {
     if (lowerBgFile.indexOf("vaultboy") >= 0) {
       Serial.println("This is vaultboy.gif - switching to Pip-Boy mode");
       newMode = MODE_PIPBOY;
-    } 
+    }
     // Check if it's a weather-related GIF to trigger weather mode
     else if (lowerBgFile.indexOf("weather") >= 0) {
       Serial.println("This is a weather-related GIF - switching to Weather mode");
       newMode = MODE_WEATHER;
-    }
-    else {
+    } else {
       Serial.println("This is a regular GIF - switching to GIF Digital mode");
       newMode = MODE_GIF_DIGITAL;
     }
@@ -416,12 +431,21 @@ void cycleVerticalPosition() {
 }
 
 // Check for button presses
+// Check for button presses with improved color handling for weather mode
 void checkButtonPress() {
+  // Add static variable to track if we're using weather-based colors or manual colors
+  static bool useWeatherColors = true;
+
   // Check background button (GPIO 22)
   if (digitalRead(BG_BUTTON_PIN) == LOW) {
     if (millis() - lastBgButtonPress > debounceDelay) {
       cycleBgImage();
       lastBgButtonPress = millis();
+
+      // Reset to weather-based colors when changing backgrounds in weather mode
+      if (currentMode == MODE_WEATHER) {
+        useWeatherColors = true;
+      }
     }
   }
 
@@ -436,7 +460,26 @@ void checkButtonPress() {
   // Check color button (GPIO 25)
   if (digitalRead(CLR_BUTTON_PIN) == LOW) {
     if (millis() - lastClrButtonPress > debounceDelay) {
-      cycleLedColor();
+      // Special handling for weather mode
+      if (currentMode == MODE_WEATHER) {
+        // Toggle between automatic and manual color modes
+        useWeatherColors = !useWeatherColors;
+
+        if (useWeatherColors) {
+          Serial.println("Switching to automatic weather-based LED colors");
+          // Update to weather-based color if we have valid data
+          if (currentWeather.valid) {
+            updateWeatherLEDs();
+          }
+        } else {
+          Serial.println("Switching to manual LED color selection");
+          cycleLedColor();  // Cycle to next color in manual mode
+        }
+      } else {
+        // Normal behavior for other modes
+        cycleLedColor();
+      }
+
       updateLEDs();  // Immediately update LEDs to show new color
       saveSettings();
       lastClrButtonPress = millis();
@@ -539,7 +582,7 @@ void updateClockDisplay() {
       // Update time display (but not background - that's handled separately)
       updateGifDigitalTime();
       break;
-      
+
     case MODE_WEATHER:
       // Update the weather display
       updateWeatherTime();
@@ -636,6 +679,8 @@ void setup() {
   // Initialize NeoPixel LED ring
   pixels.begin();
   pixels.setBrightness(led_ring_brightness);
+
+  currentWeather.valid = false;  // Mark as invalid until first successful fetch
 
   // Initialize SPIFFS for image storage and settings storage
   if (!SPIFFS.begin(true)) {
@@ -795,6 +840,19 @@ void loop() {
     }
   }
 
+  // Create a static variable to track last weather LED update time
+  static unsigned long lastWeatherLEDUpdate = 0;
+
+  // Only check weather LED updates in weather mode
+  static unsigned long lastWeatherColorCheck = 0;
+  if (currentMode == MODE_WEATHER && currentMillis - lastWeatherColorCheck >= 60000) {  // Every minute
+    lastWeatherColorCheck = currentMillis;
+    if (currentWeather.valid) {
+      Serial.println("Periodic check of weather LED color");
+      setWeatherLEDColorDirectly();
+    }
+  }
+
   // Get current time if needed
   bool timeUpdateNeeded = (currentMillis - lastTimeCheck >= 1000);
   bool colonUpdateNeeded = (currentMillis - lastColonBlink >= 500);
@@ -869,8 +927,8 @@ void loop() {
 
       // Update weather icon if it's animated
       updateWeatherIcon();
-      
-      // Check if it's time to update weather data (every 10 minutes)
+
+      // Check if it's time to update weather data
       updateWeatherData();
     }
   } else {
@@ -893,4 +951,3 @@ void loop() {
     flashEffect();  // Use the one from led_controls.h
   }
 }
-

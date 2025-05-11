@@ -3,6 +3,7 @@
  * For Multi-Mode Digital Clock project
  * 
  * REVISED VERSION - Allows custom LED colors for all modes
+ * with support for weather-based color changes
  */
 
 #ifndef THEME_MANAGER_H
@@ -16,7 +17,8 @@
 #define MODE_ARC_ANALOG 1
 #define MODE_PIPBOY 2
 #define MODE_GIF_DIGITAL 3
-#define MODE_TOTAL 4 
+#define MODE_WEATHER 4
+#define MODE_TOTAL 5
 
 // LED color IDs for consistency
 // When adding a new color, make sure to update this to add a new #define
@@ -33,7 +35,21 @@
 #define COLOR_IRONMAN_GOLD 9
 #define COLOR_YELLOW 10
 #define COLOR_WHITE 11
-#define COLOR_TOTAL 12
+
+// Weather-specific colors for automatic ambient LED coloring
+#define COLOR_FREEZING_BLUE 12  // Icy blue for freezing temperatures
+#define COLOR_COLD_BLUE 13      // Cold blue for cold temperatures
+#define COLOR_COOL_CYAN 14      // Cyan for cool temperatures
+#define COLOR_COMFORT_GREEN 15  // Green for comfortable temperatures
+#define COLOR_WARM_YELLOW 16    // Yellow for warm temperatures
+#define COLOR_HOT_ORANGE 17     // Orange for hot temperatures
+#define COLOR_VERY_HOT_RED 18   // Bright red for very hot temperatures
+#define COLOR_STORM_PURPLE 19   // Purple for storm conditions
+#define COLOR_RAIN_BLUE 20      // Deep blue for rain
+#define COLOR_SNOW_WHITE 21     // Bright white for snow
+#define COLOR_FOG_GRAY 22       // Gray for fog/mist conditions
+
+#define COLOR_TOTAL 23  // Total number of available colors
 
 // Extended LED color structure with name
 struct LEDColorDefinition {
@@ -44,8 +60,9 @@ struct LEDColorDefinition {
   const char* name;
 };
 
-// Predefined LED colors array - now with names (R, G, B, name) format
+// Predefined LED colors array - now with names (R, G, B, TFT color, name) format
 LEDColorDefinition ledColors[COLOR_TOTAL] = {
+  // Original colors
   { 180, 20, 5, 0xB081, "Iron Man Red" },
   { 220, 0, 10, 0xE004, "Spiderman Red" },
   { 255, 0, 0, 0xF800, "Bright Red" },
@@ -57,7 +74,20 @@ LEDColorDefinition ledColors[COLOR_TOTAL] = {
   { 180, 0, 255, 0xC01F, "Purple" },
   { 200, 140, 0, 0xCA00, "Iron Man Gold" },
   { 255, 255, 0, 0xFFE0, "Yellow" },
-  { 255, 255, 255, 0xFFFF, "White" }
+  { 255, 255, 255, 0xFFFF, "White" },
+
+  // Weather condition colors
+  { 150, 230, 255, 0x9FFF, "Freezing" },    // Icy blue
+  { 40, 100, 255, 0x257F, "Cold" },         // Cold blue
+  { 0, 200, 220, 0x07DD, "Cool" },          // Turquoise
+  { 20, 220, 120, 0x17E0, "Comfortable" },  // Pleasant green
+  { 255, 240, 50, 0xFFA0, "Warm" },         // Warm yellow
+  { 255, 150, 0, 0xFC60, "Hot" },           // Orange
+  { 255, 50, 0, 0xFB00, "Very Hot" },       // Hot red
+  { 130, 0, 220, 0x801B, "Storm" },         // Storm purple
+  { 20, 80, 200, 0x14CD, "Rain" },          // Rain blue
+  { 240, 240, 255, 0xF7FF, "Snow" },        // Snow white
+  { 140, 140, 160, 0x8DB4, "Fog" }          // Fog/mist gray
 };
 
 // Track current LED color
@@ -104,8 +134,14 @@ const char* getColorName(int colorIndex) {
 
 // Cycle through available LED colors
 void cycleLedColor() {
-  // Cycle through predefined colors
+  // Skip the weather-specific colors in manual cycling
+  // as they're meant for automatic use by the weather mode
   currentLedColor = (currentLedColor + 1) % COLOR_TOTAL;
+
+  // Skip the weather colors when cycling manually
+  if (currentLedColor >= COLOR_FREEZING_BLUE && currentLedColor <= COLOR_FOG_GRAY) {
+    currentLedColor = COLOR_IRONMAN_RED;  // Wrap back to first color
+  }
 
   // Show color name overlay - function defined in led_controls.h
   showColorNameOverlay();
