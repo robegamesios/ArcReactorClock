@@ -142,7 +142,7 @@ void listSPIFFSFiles() {
 void checkForImageFiles() {
   File root = SPIFFS.open("/");
   File file = root.openNextFile();
-  
+
   numBgImages = 0;  // Reset counter
 
   while (file && numBgImages < MAX_BACKGROUNDS) {
@@ -213,7 +213,7 @@ void switchMode(int mode) {
   // Initialize weather mode if needed
   if (mode == MODE_WEATHER) {
     initWeatherTheme();
-    
+
     // Set LED color based on temperature if weather data is valid
     if (currentWeather.valid) {
       setWeatherLEDColorDirectly();
@@ -223,7 +223,15 @@ void switchMode(int mode) {
   // Draw interface for new mode
   drawBackground();
 
-  if (!isClockHidden) {
+  // Handle clock display based on mode
+  if (mode == MODE_GIF_DIGITAL) {
+    // For GIF mode, don't show clock but continue updating GIF
+    updateGifDigitalBackground();
+  } else if (mode == MODE_WEATHER) {
+    // Always update weather interface
+    updateWeatherTime();
+  } else if (!isClockHidden) {
+    // For other modes, show clock if not hidden
     updateClockDisplay();
   }
 
@@ -251,7 +259,7 @@ void cycleBgImage() {
     if (lowerBgFile.indexOf("vaultboy") >= 0) {
       newMode = MODE_PIPBOY;
     }
-    // Check if it's a weather-related GIF 
+    // Check if it's a weather-related GIF
     else if (lowerBgFile.indexOf("weather") >= 0) {
       newMode = MODE_WEATHER;
     } else {
@@ -278,14 +286,18 @@ void cycleBgImage() {
     // Draw the new background
     drawBackground();
 
-    // Force a complete refresh of the clock display
-    if (!isClockHidden) {
+    // Handle display updates based on mode
+    if (currentMode == MODE_GIF_DIGITAL) {
+      // For GIF mode, only update animation
+      updateGifDigitalBackground();
+    } else if (currentMode == MODE_WEATHER) {
+      // For weather mode, always update
+      updateWeatherTime();
+    } else if (!isClockHidden) {
+      // For other modes, show clock if not hidden
       if (currentMode == MODE_ARC_DIGITAL) {
         resetArcDigitalVariables();
         updateDigitalTime();
-      } else if (currentMode == MODE_GIF_DIGITAL) {
-        resetGifDigitalVariables();
-        updateGifDigitalTime();
       }
     }
   }
@@ -296,7 +308,14 @@ void cycleBgImage() {
 
 // Handle vertical position button press
 void cycleVerticalPosition() {
-  // Check the current mode first
+  // GIF_DIGITAL mode should never show the clock
+  if (currentMode == MODE_GIF_DIGITAL) {
+    // For GIF_DIGITAL mode, always hide the clock but allow cycling backgrounds
+    isClockHidden = true;
+    return;
+  }
+
+  // Check the current mode
   if (currentMode == MODE_PIPBOY || currentMode == MODE_WEATHER) {
     // For Pip-Boy and Weather modes, just cycle vertical positions
     if (currentVertPos == POS_TOP) {
@@ -312,7 +331,7 @@ void cycleVerticalPosition() {
     }
   } else {
     // For digital modes, cycle through positions including analog mode
-    if (currentMode == MODE_ARC_DIGITAL || currentMode == MODE_GIF_DIGITAL) {
+    if (currentMode == MODE_ARC_DIGITAL) {
       if (currentVertPos == POS_TOP) {
         currentVertPos = POS_CENTER;
       } else if (currentVertPos == POS_CENTER) {
@@ -465,12 +484,20 @@ void drawBackground() {
 
 // Update the clock display based on current settings
 void updateClockDisplay() {
-  // For GIF Digital mode, always update animation regardless of clock visibility
+  // For GIF Digital mode, only update the animation, never the clock
   if (currentMode == MODE_GIF_DIGITAL) {
+    // Only update the GIF animation, no clock display
     updateGifDigitalBackground();
+    return;  // Exit after handling GIF mode
   }
 
-  // Skip showing the clock text if hidden
+  // For weather mode, call updateWeatherTime which handles hiding just the time
+  if (currentMode == MODE_WEATHER) {
+    updateWeatherTime();
+    return;  // Exit after handling weather mode
+  }
+
+  // Skip showing the clock text if hidden for other modes
   if (isClockHidden) return;
 
   switch (currentMode) {
@@ -487,22 +514,13 @@ void updateClockDisplay() {
     case MODE_PIPBOY:
       updatePipBoyTime();
       break;
-
-    case MODE_GIF_DIGITAL:
-      resetGifDigitalVariables();
-      updateGifDigitalTime();
-      break;
-
-    case MODE_WEATHER:
-      updateWeatherTime();
-      break;
   }
 }
 
 // Save current settings
 void saveSettings() {
   int ledColor = getCurrentLedColor();
-  
+
   // Use file storage for settings
   saveSettingsToFile(
     currentBgIndex,
@@ -537,8 +555,7 @@ void loadSettings() {
     currentMode = savedMode;
   }
 
-  if (savedVertPos == POS_TOP || savedVertPos == POS_CENTER || 
-      savedVertPos == POS_BOTTOM || savedVertPos == POS_HIDDEN) {
+  if (savedVertPos == POS_TOP || savedVertPos == POS_CENTER || savedVertPos == POS_BOTTOM || savedVertPos == POS_HIDDEN) {
     currentVertPos = savedVertPos;
     isClockHidden = (savedVertPos == POS_HIDDEN);
     CLOCK_VERTICAL_OFFSET = currentVertPos;
@@ -612,7 +629,7 @@ void setup() {
         if (testBuf) {
           testFile.read(testBuf, testSize);
           testFile.close();
-          
+
           tft.fillScreen(TFT_BLACK);
           TJpgDec.drawJpg(0, 0, testBuf, testSize);
           free(testBuf);
@@ -637,7 +654,7 @@ void setup() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nWiFi connected!");
-    
+
     // Setup time synchronization
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
@@ -697,17 +714,18 @@ void loop() {
   if (needClockRefresh) {
     needClockRefresh = false;
     drawBackground();
-    if (!isClockHidden) {
+
+    // For GIF_DIGITAL, only update the animation, not the clock
+    if (currentMode == MODE_GIF_DIGITAL) {
+      updateGifDigitalBackground();
+    }
+    // For weather mode, always update regardless of isClockHidden
+    else if (currentMode == MODE_WEATHER) {
       updateClockDisplay();
     }
-  }
-
-  // Track weather color update timing
-  static unsigned long lastWeatherColorCheck = 0;
-  if (currentMode == MODE_WEATHER && currentMillis - lastWeatherColorCheck >= 60000) {  // Every minute
-    lastWeatherColorCheck = currentMillis;
-    if (currentWeather.valid) {
-      setWeatherLEDColorDirectly();
+    // For other modes, check if clock is hidden
+    else if (!isClockHidden) {
+      updateClockDisplay();
     }
   }
 
@@ -715,8 +733,33 @@ void loop() {
   bool timeUpdateNeeded = (currentMillis - lastTimeCheck >= 1000);
   bool colonUpdateNeeded = (currentMillis - lastColonBlink >= 500);
 
-  // Skip display updates if clock is hidden
-  if (!isClockHidden) {
+  // Special case for GIF_DIGITAL mode - only update the GIF animation, not the clock
+  if (currentMode == MODE_GIF_DIGITAL) {
+    // Always update the GIF animation
+    updateGifDigitalBackground();
+
+    // Still update time variables in the background, but don't display
+    if (timeUpdateNeeded) {
+      lastTimeCheck = currentMillis;
+      updateTimeAndDate();
+    }
+  }
+  // Special case for weather mode - always update weather even if clock part is hidden
+  else if (currentMode == MODE_WEATHER) {
+    if (timeUpdateNeeded) {
+      lastTimeCheck = currentMillis;
+      updateTimeAndDate();
+      updateWeatherTime();  // This function will handle hiding just the time
+    }
+
+    // Update weather icon if needed
+    updateWeatherIcon();
+
+    // Check if it's time to update weather data
+    updateWeatherData();
+  }
+  // For other modes, check if clock is hidden
+  else if (!isClockHidden) {
     // Update based on current mode
     if (currentMode == MODE_ARC_DIGITAL) {
       if (timeUpdateNeeded) {
@@ -754,43 +797,14 @@ void loop() {
 
       // Update the GIF animation
       updatePipBoyGif();
-    } else if (currentMode == MODE_GIF_DIGITAL) {
-      if (timeUpdateNeeded) {
-        lastTimeCheck = currentMillis;
-        updateTimeAndDate();
-        updateGifDigitalTime();
-      }
-
-      // Handle blinking colon
-      if (colonUpdateNeeded) {
-        lastColonBlink = currentMillis;
-        updateGifDigitalColon();
-      }
-
-      // Update the GIF animation
-      updateGifDigitalBackground();
-    } else if (currentMode == MODE_WEATHER) {
-      if (timeUpdateNeeded) {
-        lastTimeCheck = currentMillis;
-        updateTimeAndDate();
-        updateWeatherTime();
-      }
-
-      // Update weather icon if needed
-      updateWeatherIcon();
-
-      // Check if it's time to update weather data
-      updateWeatherData();
     }
   } else {
-    // Even if clock is hidden, still update animations
-    if (currentMode == MODE_GIF_DIGITAL) {
-      updateGifDigitalBackground();
-    } else if (currentMode == MODE_PIPBOY) {
+    // Even if clock is hidden, still update animations for Pip-Boy
+    if (currentMode == MODE_PIPBOY) {
       updatePipBoyGif();
     }
 
-    // Even if clock is hidden, still update time
+    // Even if clock is hidden, still update time variables
     if (timeUpdateNeeded) {
       lastTimeCheck = currentMillis;
       updateTimeAndDate();

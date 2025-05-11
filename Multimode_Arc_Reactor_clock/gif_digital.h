@@ -1,6 +1,7 @@
 /*
- * gif_digital.h - GIF Background Digital Clock Mode
+ * gif_digital.h - GIF Background Mode (No Clock Overlay)
  * For Multi-Mode Digital Clock project
+ * Modified to remove clock display functionality
  */
 
 #ifndef GIF_DIGITAL_H
@@ -14,28 +15,15 @@
 #include "utils.h"
 #include "led_controls.h"
 
-extern int CLOCK_VERTICAL_OFFSET;
-
-// For GIF Digital mode
-int prevHoursGif = -1, prevMinutesGif = -1, prevSecondsGif = -1;
-bool prevColonStateGif = false;
-bool showColonGif = true;
-
 // GIF background handling
 AnimatedGIF gifDigitalClock;
 uint8_t *gifDigitalBuffer = NULL;
 int gifDigitalSize = 0;
 
-#define CYAN_COLOR 0x07FF
-#define TEXT_BACKGROUND_COLOR 0x0001
-
 // Function prototypes
 void GIFDrawDigital(GIFDRAW *pDraw);
 bool displayGIFDigitalBackground(const char *filename);
 void drawGifDigitalBackground(const char *gifFilename);
-void updateGifDigitalTime();
-void updateGifDigitalColon();
-void resetGifDigitalVariables();
 void updateGifDigitalBackground();
 void cleanupGifDigitalMode();
 
@@ -178,15 +166,6 @@ void drawGifDigitalBackground(const char *gifFilename) {
   }
 }
 
-// Reset variables to force redraw of digital clock
-void resetGifDigitalVariables() {
-  prevHoursGif = -1;
-  prevMinutesGif = -1;
-  prevSecondsGif = -1;
-  prevColonStateGif = false;
-  showColonGif = true;
-}
-
 // Update the GIF animation - advance to next frame
 void updateGifDigitalBackground() {
   // Check if GIF exists and is loaded
@@ -206,138 +185,6 @@ void cleanupGifDigitalMode() {
     free(gifDigitalBuffer);
     gifDigitalBuffer = NULL;
     gifDigitalSize = 0;
-
-    // Reset variables to force redraw next time
-    prevHoursGif = -1;
-    prevMinutesGif = -1;
-    prevSecondsGif = -1;
-    prevColonStateGif = false;
-    showColonGif = true;
-  }
-}
-
-// Update digital time display
-void updateGifDigitalTime() {
-  // Only update parts that have changed
-  bool hoursChanged = (hours != prevHoursGif);
-  bool minutesChanged = (minutes != prevMinutesGif);
-  bool secondsChanged = (seconds != prevSecondsGif);
-  bool colonChanged = (showColonGif != prevColonStateGif);
-
-  // Only update the display if the time or colon state has changed
-  if (hoursChanged || minutesChanged || secondsChanged || colonChanged) {
-    // Create backgrounds for text that preserve most of the underlying image
-    tft.setTextColor(CYAN_COLOR, TEXT_BACKGROUND_COLOR);
-
-    // Handle seconds update - at the top for symmetry
-    if (seconds != prevSecondsGif) {
-      // Format seconds with leading zero if needed
-      char timeStr[6];
-      sprintf(timeStr, seconds < 10 ? "0%d" : "%d", seconds);
-
-      // Draw seconds with semi-transparent background
-      tft.setTextSize(2);
-      tft.setCursor(screenCenterX - 10, screenCenterY - 40 + CLOCK_VERTICAL_OFFSET);
-      tft.print(timeStr);
-    }
-
-    // Handle hours update
-    if (hours != prevHoursGif || (minutes != prevMinutesGif && hours < 10)) {
-      // Format hours with leading zero if needed
-      char timeStr[6];
-      int displayHours = is24Hour ? hours : (hours > 12 ? hours - 12 : (hours == 0 ? 12 : hours));
-      sprintf(timeStr, displayHours < 10 ? "0%d" : "%d", displayHours);
-
-      // Draw hours text with semi-transparent background
-      tft.setTextSize(4);
-      tft.setCursor(screenCenterX - 58, screenCenterY - 20 + CLOCK_VERTICAL_OFFSET);
-      tft.print(timeStr);
-    }
-
-    // Handle colon update (only if colon state changed)
-    if (showColonGif != prevColonStateGif) {
-      // Colon position - apply vertical offset
-      int colonX = screenCenterX - 15;
-      int colonY = screenCenterY - 25 + CLOCK_VERTICAL_OFFSET;
-      int colonWidth = 25;
-      int colonHeight = 45;
-
-      // Either draw the colon or clear its area by redrawing background
-      if (showColonGif) {
-        tft.setTextSize(4);
-        tft.setCursor(screenCenterX - 10, screenCenterY - 20 + CLOCK_VERTICAL_OFFSET);
-        tft.print(":");
-      } else {
-        // When colon needs to be hidden, draw a small rect with the background color
-        tft.fillRect(colonX, colonY, colonWidth, colonHeight, TEXT_BACKGROUND_COLOR);
-      }
-    }
-
-    // Handle minutes update
-    if (minutes != prevMinutesGif) {
-      // Format minutes with leading zero if needed
-      char timeStr[6];
-      sprintf(timeStr, minutes < 10 ? "0%d" : "%d", minutes);
-
-      // Draw minutes text with semi-transparent background - apply vertical offset
-      tft.setTextSize(4);
-      tft.setCursor(screenCenterX + 15, screenCenterY - 20 + CLOCK_VERTICAL_OFFSET);
-      tft.print(timeStr);
-    }
-
-    // Handle AM/PM indicator (only in 12-hour mode and if hour changed)
-    if (!is24Hour && (hours != prevHoursGif || (prevHoursGif == -1))) {
-      struct tm timeinfo;
-      bool isPM = false;
-
-      if (WiFi.status() == WL_CONNECTED && getLocalTime(&timeinfo)) {
-        isPM = (timeinfo.tm_hour >= 12);
-      } else {
-        // For manual time, determine AM/PM based on hours
-        isPM = (hours >= 12);
-      }
-
-      // Draw AM/PM indicator with semi-transparent background - apply vertical offset
-      tft.setTextSize(2);
-      tft.setCursor(screenCenterX - 10, screenCenterY + 20 + CLOCK_VERTICAL_OFFSET);
-      tft.println(isPM ? "PM" : "AM");
-    }
-
-    // Save current state for next comparison
-    prevHoursGif = hours;
-    prevMinutesGif = minutes;
-    prevSecondsGif = seconds;
-    prevColonStateGif = showColonGif;
-  }
-}
-
-// For blinking colon in digital mode
-void updateGifDigitalColon() {
-  // Toggle colon state
-  bool oldColonState = showColonGif;
-  showColonGif = !showColonGif;
-
-  // Only call update if colon state changed
-  if (oldColonState != showColonGif) {
-    // Position for colon - apply vertical offset
-    int colonX = screenCenterX - 15;
-    int colonY = screenCenterY - 25 + CLOCK_VERTICAL_OFFSET;
-    int colonWidth = 25;
-    int colonHeight = 45;
-
-    if (showColonGif) {
-      // Draw colon with semi-transparent background
-      tft.setTextColor(CYAN_COLOR, TEXT_BACKGROUND_COLOR);
-      tft.setTextSize(4);
-      tft.setCursor(screenCenterX - 10, screenCenterY - 20 + CLOCK_VERTICAL_OFFSET);
-      tft.print(":");
-    } else {
-      // Clear the colon with background color
-      tft.fillRect(colonX, colonY, colonWidth, colonHeight, TEXT_BACKGROUND_COLOR);
-    }
-
-    // Update the state tracking
-    prevColonStateGif = showColonGif;
   }
 }
 

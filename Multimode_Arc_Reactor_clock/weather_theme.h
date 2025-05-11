@@ -25,6 +25,7 @@ extern const long weatherCityId;
 extern char weatherUnits[10];
 
 // External references
+extern bool isClockHidden;
 extern unsigned long lastWeatherUpdate;
 extern const unsigned long weatherUpdateInterval;
 
@@ -443,8 +444,8 @@ void updateWeatherTime() {
   bool hoursChanged = (hours != prevWeatherHours);
   bool minutesChanged = (minutes != prevWeatherMinutes);
 
-  // Only update the time display if hours or minutes changed
-  if (hoursChanged || minutesChanged) {
+  // Only update the time display if hours or minutes changed AND clock is not hidden
+  if ((hoursChanged || minutesChanged) && !isClockHidden) {
     // Clear the time area
     tft.fillRect(screenCenterX - 70, 195, 140, 15, WEATHER_BG);
 
@@ -462,9 +463,13 @@ void updateWeatherTime() {
     // Update previous values
     prevWeatherHours = hours;
     prevWeatherMinutes = minutes;
+  } else if (isClockHidden && (hoursChanged || minutesChanged)) {
+    // If clock is hidden but time changed, still update our tracking variables
+    prevWeatherHours = hours;
+    prevWeatherMinutes = minutes;
   }
 
-  // Update the seconds indicator
+  // Always update the seconds indicator, regardless of whether time is hidden
   updateWeatherSecondsIndicator();
 }
 
