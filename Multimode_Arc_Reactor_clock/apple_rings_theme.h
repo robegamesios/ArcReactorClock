@@ -145,10 +145,10 @@ void drawAppleRingsInterface() {
   updateAppleRingsTime();
 }
 
-// Draw digital time in the center - smaller and more compact
+// Draw digital time in the center - improved spacing
 void drawTimeDigits() {
-  // Clear the center area
-  tft.fillCircle(screenCenterX, screenCenterY, HOURS_RING_RADIUS - RING_THICKNESS - 2, APPLE_RINGS_BG);
+  // Clear the center area completely
+  tft.fillCircle(screenCenterX, screenCenterY, HOURS_RING_RADIUS - RING_THICKNESS/2, APPLE_RINGS_BG);
   
   // Display current time in digital format
   char timeStr[10];
@@ -157,25 +157,28 @@ void drawTimeDigits() {
   
   // Format time based on 12/24 hour setting
   int displayHours = is24Hour ? hours : (hours > 12 ? hours - 12 : (hours == 0 ? 12 : hours));
+  
+  // Fix: Use wider spacing between hours and minutes
   sprintf(timeStr, "%02d:%02d", displayHours, minutes);
   sprintf(secStr, "%02d", seconds);
   sprintf(ampmStr, "%s", (hours >= 12 ? "PM" : "AM"));
   
-  // Draw seconds on top
+  // Draw seconds on top with more space
   tft.setTextSize(1);
   tft.setTextColor(TFT_WHITE);
-  tft.setCursor(screenCenterX - 6, screenCenterY - 18);
+  tft.setCursor(screenCenterX - 6, screenCenterY - 22);
   tft.print(secStr);
   
-  // Draw hours:minutes in center - smaller size with better spacing
+  // Draw hours:minutes in center with better spacing
   tft.setTextSize(2);
-  tft.setCursor(screenCenterX - 28, screenCenterY - 8);
+  // Fix: Move text position to prevent overlap
+  tft.setCursor(screenCenterX - 30, screenCenterY - 8);
   tft.print(timeStr);
   
-  // Draw AM/PM at bottom
+  // Draw AM/PM at bottom with more space
   if (!is24Hour) {
     tft.setTextSize(1);
-    tft.setCursor(screenCenterX - 6, screenCenterY + 12);
+    tft.setCursor(screenCenterX - 6, screenCenterY + 16);
     tft.print(ampmStr);
   }
 }
@@ -226,51 +229,87 @@ void updateAppleRingsTime() {
     prevRingHours = hours;
   }
   
-  // Update minutes ring (middle)
+  // Update minutes ring (middle) - Fixed to show correct minutes progress
   if (minutesChanged) {
     // Each minute = 6 degrees (360/60)
     float minuteDegrees = 6.0;
     
-    // Only redraw background if minutes changed from 59 to 0
-    if (prevRingMinutes == 59 || prevRingMinutes == -1) {
-      drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
-               0, 360, APPLE_GREEN_BG);
-    }
+    // FIX: Always redraw background to ensure proper display
+    // This ensures the minutes circle doesn't show as complete when it shouldn't
+    drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
+             0, 360, APPLE_GREEN_BG);
     
     // Calculate end angle based on minutes (start from 12 o'clock position)
     float endAngle = -90 + (minutes * minuteDegrees);
-    if (minutes == 0) {
-      endAngle = 270; // Full circle for 60 minutes
-    }
     
-    // Draw the minute progress ring
-    drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
-             -90, endAngle, APPLE_GREEN);
+    // Fix: Only draw full circle when minutes is actually 0
+    // This prevents the minutes ring from showing full when it shouldn't
+    if (minutes == 0) {
+      // For minute 0, draw either minimal or no segment
+      if (prevRingMinutes != -1) {
+        // Just a tiny segment to prevent complete emptiness
+        drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
+                 -90, -89, APPLE_GREEN);
+      }
+    } else {
+      // Draw proper segment for current minutes
+      drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
+               -90, endAngle, APPLE_GREEN);
+    }
     
     prevRingMinutes = minutes;
   }
   
-  // Update seconds ring (outermost)
+  // Update seconds ring (outermost) - ENHANCED FIX FOR ARTIFACTS AND FLICKERING
   if (secondsChanged) {
     // Each second = 6 degrees (360/60)
     float secondDegrees = 6.0;
     
-    // Only redraw background if seconds changed from 59 to 0
-    if (prevRingSeconds == 59 || prevRingSeconds == -1) {
+    // Complete reset case - seconds rollover from 59 to 0
+    if (seconds == 0 && prevRingSeconds > 0) {
+      // Clear the entire screen area for the seconds ring with the background color
+      // Use a slightly larger width to ensure all artifacts are removed
+      drawRing(screenCenterX, screenCenterY, SECONDS_RING_RADIUS, RING_THICKNESS + 2, 
+               0, 360, APPLE_RINGS_BG);
+               
+      // Then redraw the proper background
       drawRing(screenCenterX, screenCenterY, SECONDS_RING_RADIUS, RING_THICKNESS, 
                0, 360, APPLE_RED_BG);
+               
+      // Don't draw any foreground for second 0 - this prevents artifacts
+      // The second hand will start drawing again at second 1
+      
+    } else if (prevRingSeconds == -1) {
+      // First draw case (initialization)
+      // Draw the background ring
+      drawRing(screenCenterX, screenCenterY, SECONDS_RING_RADIUS, RING_THICKNESS, 
+               0, 360, APPLE_RED_BG);
+               
+      // Draw the initial arc
+      if (seconds > 0) {
+        float endAngle = -90 + (seconds * secondDegrees);
+        drawRing(screenCenterX, screenCenterY, SECONDS_RING_RADIUS, RING_THICKNESS, 
+                 -90, endAngle, APPLE_RED);
+      }
+    } else {
+      // Normal update for seconds 1-59
+      // Calculate end angle based on seconds (start from 12 o'clock position)
+      float endAngle = -90 + (seconds * secondDegrees);
+      
+      // If seconds decreased (unusual case like time adjustment), redraw background
+      if (seconds < prevRingSeconds) {
+        drawRing(screenCenterX, screenCenterY, SECONDS_RING_RADIUS, RING_THICKNESS, 
+                 0, 360, APPLE_RED_BG);
+      }
+      
+      // Draw just the new segment(s)
+      if (seconds > 0) {
+        drawRing(screenCenterX, screenCenterY, SECONDS_RING_RADIUS, RING_THICKNESS, 
+                 -90, endAngle, APPLE_RED);
+      }
     }
     
-    // Calculate end angle based on seconds (start from 12 o'clock position)
-    float endAngle = -90 + (seconds * secondDegrees);
-    if (seconds == 0) {
-      endAngle = 270; // Full circle for 60 seconds
-    }
-    
-    // Draw the second progress ring
-    drawRing(screenCenterX, screenCenterY, SECONDS_RING_RADIUS, RING_THICKNESS, 
-             -90, endAngle, APPLE_RED);
-    
+    // Save the current seconds value
     prevRingSeconds = seconds;
   }
   
