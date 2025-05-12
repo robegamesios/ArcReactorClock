@@ -43,13 +43,14 @@ void updateLEDs() {
                               ledColors[currentLedColor].g,
                               ledColors[currentLedColor].b));
   }
-  pixels.show();
+  
+  pixels.show(); 
 }
 
 // Flash effect for the LED ring (used for notifications/transitions)
 void flashEffect() {
   pixels.setBrightness(led_ring_brightness_flash);
-  
+
   // Set all pixels to white
   for (int i = 0; i < pixels.numPixels(); i++) {
     pixels.setPixelColor(i, pixels.Color(250, 250, 250));

@@ -19,6 +19,7 @@
 #include "weather_data.h"
 #include "utils.h"
 #include "theme_manager.h"
+#include "theme_color_memory.h"
 #include "led_controls.h"
 #include "weather_led.h"
 #include "weather_theme.h"
@@ -131,6 +132,14 @@ void listSPIFFSFiles() {
   }
 }
 
+String getCurrentBackgroundFilename() {
+  if (currentBgIndex >= 0 && currentBgIndex < numBgImages) {
+    String bgPath = backgroundImages[currentBgIndex];
+    return getFilenameFromPath(bgPath);
+  }
+  return "";  // Return empty string if no valid background
+}
+
 // Check for image files in SPIFFS and index them
 void checkForImageFiles() {
   File root = SPIFFS.open("/");
@@ -195,9 +204,22 @@ void switchMode(int mode) {
 
   tft.fillScreen(TFT_BLACK);
   currentMode = mode;
-  
+
   Serial.print("Switched to mode: ");
   Serial.println(currentMode);
+
+  // Load background-specific LED color (unless weather mode)
+  if (mode != MODE_WEATHER && currentBgIndex >= 0 && currentBgIndex < numBgImages) {
+    String justFilename = getCurrentBackgroundFilename();
+    if (justFilename.length() > 0) {
+      int savedColor = getThemeColorPreference(justFilename.c_str());
+      updateModeColorsFromLedColor(savedColor);
+      Serial.print("Applied LED color for '");
+      Serial.print(justFilename);
+      Serial.print("': ");
+      Serial.println(savedColor);
+    }
+  }
 
   if (mode == MODE_WEATHER) {
     initWeatherTheme();
@@ -243,7 +265,7 @@ void cycleBgImage() {
   int newMode = currentMode;
 
   // Check for apple rings mode trigger
-  if (lowerBgFile.indexOf("apple") >= 0 || lowerBgFile.indexOf("ring") >= 0) {
+  if (lowerBgFile.indexOf("apple_rings") >= 0) {
     Serial.println("Detected Apple Rings trigger");
     newMode = MODE_APPLE_RINGS;
   }
@@ -259,10 +281,24 @@ void cycleBgImage() {
   } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
     if (lowerBgFile.indexOf("weather") >= 0) {
       newMode = MODE_WEATHER;
-    } else if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL || 
-               currentMode == MODE_WEATHER || currentMode == MODE_APPLE_RINGS) {
+    } else if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL || currentMode == MODE_WEATHER || currentMode == MODE_APPLE_RINGS) {
       newMode = MODE_ARC_DIGITAL;
     }
+  }
+
+  // Get clean filename for this background
+  String justFilename = getFilenameFromPath(bgFile);
+
+  // Load background-specific LED color before switching mode
+  if (newMode != MODE_WEATHER) {
+    // Get color preference using just the filename
+    int savedColor = getThemeColorPreference(justFilename.c_str());
+    updateModeColorsFromLedColor(savedColor);
+    Serial.print("Setting LED color to: ");
+    Serial.println(savedColor);
+
+    // IMPORTANT: Update the physical LEDs with the new color
+    updateLEDs();  // THIS LINE WAS MISSING!
   }
 
   Serial.print("Switching to mode: ");
@@ -359,6 +395,8 @@ void checkButtonPress() {
   static bool forceSaveActive = false;
   static unsigned long appleButtonsStartTime = 0;
   static bool appleButtonsActive = false;
+  static unsigned long resetStartTime = 0;
+  static bool resetActive = false;
 
   // Check background button (GPIO 22)
   if (digitalRead(BG_BUTTON_PIN) == LOW) {
@@ -392,7 +430,19 @@ void checkButtonPress() {
           cycleLedColor();
         }
       } else {
+        // Cycle to the next LED color
         cycleLedColor();
+
+        // Save the color preference for this current background
+        String justFilename = getCurrentBackgroundFilename();
+        if (justFilename.length() > 0) {
+          saveThemeColorPreference(justFilename.c_str(), getCurrentLedColor());
+          Serial.print("Saved LED color ");
+          Serial.print(getCurrentLedColor());
+          Serial.print(" for '");
+          Serial.print(justFilename);
+          Serial.println("'");
+        }
       }
 
       updateLEDs();
@@ -406,23 +456,23 @@ void checkButtonPress() {
     if (!appleButtonsActive) {
       appleButtonsStartTime = millis();
       appleButtonsActive = true;
-    } else if (millis() - appleButtonsStartTime > 1000) { // Hold for 1 second
+    } else if (millis() - appleButtonsStartTime > 1000) {  // Hold for 1 second
       Serial.println("Force switching to Apple Rings mode");
       currentMode = MODE_APPLE_RINGS;
       initAppleRingsTheme();
       drawAppleRingsInterface();
-      
+
       // Wait until buttons are released to avoid immediate switching
       while (digitalRead(BG_BUTTON_PIN) == LOW || digitalRead(POS_BUTTON_PIN) == LOW) {
         delay(10);
       }
-      
+
       appleButtonsActive = false;
     }
   } else {
     appleButtonsActive = false;
   }
-  
+
   // Check for force save (holding background and color buttons together)
   if (digitalRead(BG_BUTTON_PIN) == LOW && digitalRead(CLR_BUTTON_PIN) == LOW) {
     if (!forceSaveActive) {
@@ -439,6 +489,32 @@ void checkButtonPress() {
     }
   } else {
     forceSaveActive = false;
+  }
+
+  // Special combo: All three buttons to reset color mappings
+  if (digitalRead(BG_BUTTON_PIN) == LOW && digitalRead(POS_BUTTON_PIN) == LOW && digitalRead(CLR_BUTTON_PIN) == LOW) {
+    if (!resetActive) {
+      resetStartTime = millis();
+      resetActive = true;
+    } else if (millis() - resetStartTime > 5000) {  // Hold all buttons for 5 seconds
+      // Reset all color mappings
+      resetAllColorMappings();
+
+      // Flash the LEDs to indicate reset
+      for (int i = 0; i < 3; i++) {
+        flashEffect();
+        delay(100);
+      }
+
+      resetActive = false;
+
+      // Wait until all buttons are released
+      while (digitalRead(BG_BUTTON_PIN) == LOW || digitalRead(POS_BUTTON_PIN) == LOW || digitalRead(CLR_BUTTON_PIN) == LOW) {
+        delay(10);
+      }
+    }
+  } else {
+    resetActive = false;
   }
 }
 
@@ -648,6 +724,22 @@ void setup() {
   // Load saved settings
   loadSettings();
 
+  // Load theme-specific color mappings
+  loadThemeColorMappings();
+
+  // Apply the background-specific LED color
+  if (currentMode != MODE_WEATHER && currentBgIndex >= 0 && currentBgIndex < numBgImages) {
+    String justFilename = getCurrentBackgroundFilename();
+    if (justFilename.length() > 0) {
+      int savedColor = getThemeColorPreference(justFilename.c_str());
+      updateModeColorsFromLedColor(savedColor);
+      Serial.print("Startup: Applied LED color for '");
+      Serial.print(justFilename);
+      Serial.print("': ");
+      Serial.println(savedColor);
+    }
+  }
+
   // Ensure settings file exists for next boot
   saveSettings();
 
@@ -656,10 +748,6 @@ void setup() {
   if (!isClockHidden) {
     updateClockDisplay();
   }
-
-  currentMode = MODE_APPLE_RINGS;
-  initAppleRingsTheme();
-  drawAppleRingsInterface();
 
   // Update LEDs with current color
   updateLEDs();
