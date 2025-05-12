@@ -61,7 +61,7 @@ void initAppleRingsTheme() {
   Serial.println("Apple Rings theme initialized");
 }
 
-// Draw a ring segment with the specified parameters - improved for cleaner edges
+// Draw a ring segment with highly optimized smoothing techniques
 void drawRing(int x, int y, int radius, int thickness, float startAngle, float endAngle, uint16_t color) {
   // Handle case where endAngle < startAngle (crossing 0/360 boundary)
   if (endAngle < startAngle) {
@@ -74,48 +74,73 @@ void drawRing(int x, int y, int radius, int thickness, float startAngle, float e
   float startRad = startAngle * DEG_TO_RAD;
   float endRad = endAngle * DEG_TO_RAD;
   
-  // Draw filled arc by segments for smoother appearance
-  // Use more segments for longer arcs
-  int segments = max(20, (int)((endAngle - startAngle) / 5));
+  // Use much higher segment count for dramatically smoother appearance
+  // Increase segments based on ring radius for better scaling
+  int segments = max(120, (int)(radius * (endAngle - startAngle) / 40.0)); 
   float angleStep = (endRad - startRad) / segments;
   
-  // Pre-calculate inner and outer radii
-  int innerRadius = radius - thickness/2;
-  int outerRadius = radius + thickness/2;
+  // Pre-calculate inner and outer radii with sub-pixel precision
+  float innerRadiusF = radius - thickness/2.0;
+  float outerRadiusF = radius + thickness/2.0;
   
-  // For small arcs, simplify with a single shape
-  if (endAngle - startAngle <= 5) {
-    float midRad = (startRad + endRad) / 2;
-    int x1 = x + round(cos(startRad) * innerRadius);
-    int y1 = y + round(sin(startRad) * innerRadius);
-    int x2 = x + round(cos(startRad) * outerRadius);
-    int y2 = y + round(sin(startRad) * outerRadius);
-    int x3 = x + round(cos(endRad) * outerRadius);
-    int y3 = y + round(sin(endRad) * outerRadius);
-    int x4 = x + round(cos(endRad) * innerRadius);
-    int y4 = y + round(sin(endRad) * innerRadius);
+  // Create temporary arrays to store points for a more consistent curve
+  float* innerX = new float[segments+1];
+  float* innerY = new float[segments+1];
+  float* outerX = new float[segments+1];
+  float* outerY = new float[segments+1];
+  
+  // Pre-compute all points with floating-point precision
+  for (int i = 0; i <= segments; i++) {
+    float angle = startRad + i * angleStep;
     
-    tft.fillTriangle(x1, y1, x2, y2, x3, y3, color);
-    tft.fillTriangle(x1, y1, x3, y3, x4, y4, color);
-    return;
+    innerX[i] = x + cos(angle) * innerRadiusF;
+    innerY[i] = y + sin(angle) * innerRadiusF;
+    outerX[i] = x + cos(angle) * outerRadiusF;
+    outerY[i] = y + sin(angle) * outerRadiusF;
   }
   
-  // Draw the arc as a series of triangles
+  // Draw optimized triangles with consistent direction to reduce visual artifacts
   for (int i = 0; i < segments; i++) {
-    float angle1 = startRad + i * angleStep;
-    float angle2 = startRad + (i + 1) * angleStep;
+    // Use consistent winding order for triangles
+    tft.fillTriangle(
+      round(innerX[i]), round(innerY[i]),
+      round(outerX[i]), round(outerY[i]),
+      round(outerX[i+1]), round(outerY[i+1]),
+      color
+    );
     
-    int x1 = x + round(cos(angle1) * innerRadius);
-    int y1 = y + round(sin(angle1) * innerRadius);
-    int x2 = x + round(cos(angle1) * outerRadius);
-    int y2 = y + round(sin(angle1) * outerRadius);
-    int x3 = x + round(cos(angle2) * outerRadius);
-    int y3 = y + round(sin(angle2) * outerRadius);
-    int x4 = x + round(cos(angle2) * innerRadius);
-    int y4 = y + round(sin(angle2) * innerRadius);
+    tft.fillTriangle(
+      round(innerX[i]), round(innerY[i]),
+      round(outerX[i+1]), round(outerY[i+1]),
+      round(innerX[i+1]), round(innerY[i+1]),
+      color
+    );
+  }
+  
+  // Clean up memory
+  delete[] innerX;
+  delete[] innerY;
+  delete[] outerX;
+  delete[] outerY;
+  
+  // Draw smoother end caps using multi-circle technique for better anti-aliasing effect
+  if ((endAngle - startAngle) < 360) {
+    // Calculate cap centers
+    float startX_mid = x + cos(startRad) * radius;
+    float startY_mid = y + sin(startRad) * radius;
+    float endX_mid = x + cos(endRad) * radius;
+    float endY_mid = y + sin(endRad) * radius;
     
-    tft.fillTriangle(x1, y1, x2, y2, x3, y3, color);
-    tft.fillTriangle(x1, y1, x3, y3, x4, y4, color);
+    // Draw multi-layered caps for smoother appearance
+    float capRadius = thickness/2.0;
+    
+    // Draw the main cap
+    tft.fillCircle(round(startX_mid), round(startY_mid), round(capRadius), color);
+    tft.fillCircle(round(endX_mid), round(endY_mid), round(capRadius), color);
+    
+    // Draw slightly smaller caps to fill potential gaps
+    tft.fillCircle(round(startX_mid), round(startY_mid), round(capRadius*0.9), color);
+    tft.fillCircle(round(endX_mid), round(endY_mid), round(capRadius*0.9), color);
   }
 }
 
