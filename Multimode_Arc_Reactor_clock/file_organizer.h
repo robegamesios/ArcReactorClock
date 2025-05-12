@@ -1,8 +1,7 @@
 /*
  * file_organizer.h - Background File Organization
  * For Multi-Mode Digital Clock project
- * Organizes background files in specified order: 
- * JPEGs first (Iron Man at beginning), then GIFs, then special themes
+ * Organizes background files with a simplified, reliable sorting method
  */
 
 #ifndef FILE_ORGANIZER_H
@@ -10,94 +9,114 @@
 
 #include <Arduino.h>
 
-// External references - we don't use MAX_BACKGROUNDS anymore
+// External references
 extern String backgroundImages[];
 extern int numBgImages;
 extern int currentBgIndex;
 
-// Function to check if filename contains a specific substring (case insensitive)
-bool filenameContains(const String& filename, const char* substr) {
-  String lowerFilename = filename;
-  lowerFilename.toLowerCase();
-  return lowerFilename.indexOf(substr) >= 0;
+// Extract numeric prefix from filename
+int getNumericPrefix(String filename) {
+  // Get just the filename without path
+  if (filename.startsWith("/")) {
+    filename = filename.substring(1);
+  }
+  
+  // If it doesn't start with a digit, return a high value (for sorting)
+  if (!isdigit(filename.charAt(0))) {
+    return 999;
+  }
+
+  // Extract digits from the beginning
+  String prefix = "";
+  for (int i = 0; i < filename.length() && isdigit(filename.charAt(i)); i++) {
+    prefix += filename.charAt(i);
+  }
+  
+  // Convert to integer
+  return prefix.toInt();
 }
 
-// Sort background images in the preferred order
+// Helper function for file type identification
+bool isJpegFile(const String& filename) {
+  return filename.endsWith(".jpg") || filename.endsWith(".jpeg");
+}
+
+bool isGifFile(const String& filename) {
+  return filename.endsWith(".gif");
+}
+
+bool isVaultboyFile(const String& filename) {
+  String lowerFilename = filename;
+  lowerFilename.toLowerCase();
+  return lowerFilename.indexOf("vaultboy") >= 0;
+}
+
+bool isWeatherFile(const String& filename) {
+  String lowerFilename = filename;
+  lowerFilename.toLowerCase();
+  return lowerFilename.indexOf("weather") >= 0;
+}
+
+// Determine file category (for sorting priority)
+// 0: JPEG, 1: GIF, 2: Weather, 3: Vaultboy, 4: Other
+int getFileCategory(const String& filename) {
+  if (isVaultboyFile(filename)) return 3;
+  if (isWeatherFile(filename)) return 2;
+  if (isJpegFile(filename)) return 0;
+  if (isGifFile(filename)) return 1;
+  return 4;
+}
+
+// Organize background files in the desired order
 void sortBackgroundImages() {
   if (numBgImages <= 1) return;
 
-  // We'll use the actual size of the array instead of MAX_BACKGROUNDS
-  String* sortedImages = new String[numBgImages];
-  int sortedCount = 0;
-
-  // STEP 1: Find and place Iron Man image first (if exists)
-  for (int i = 0; i < numBgImages; i++) {
-    if (filenameContains(backgroundImages[i], "ironman") && (backgroundImages[i].endsWith(".jpg") || backgroundImages[i].endsWith(".jpeg"))) {
-      sortedImages[sortedCount++] = backgroundImages[i];
-      backgroundImages[i] = "";  // Mark as processed
-      break;
+  // Use direct sorting to ensure correct order
+  for (int i = 0; i < numBgImages - 1; i++) {
+    for (int j = 0; j < numBgImages - i - 1; j++) {
+      // Get file categories
+      int cat1 = getFileCategory(backgroundImages[j]);
+      int cat2 = getFileCategory(backgroundImages[j + 1]);
+      
+      // Sort by category first
+      if (cat1 > cat2) {
+        // Swap files
+        String temp = backgroundImages[j];
+        backgroundImages[j] = backgroundImages[j + 1];
+        backgroundImages[j + 1] = temp;
+      }
+      // If same category, sort by numeric prefix
+      else if (cat1 == cat2) {
+        int prefix1 = getNumericPrefix(backgroundImages[j]);
+        int prefix2 = getNumericPrefix(backgroundImages[j + 1]);
+        
+        if (prefix1 > prefix2) {
+          // Swap files
+          String temp = backgroundImages[j];
+          backgroundImages[j] = backgroundImages[j + 1];
+          backgroundImages[j + 1] = temp;
+        }
+      }
     }
   }
-
-  // STEP 2: Add remaining JPEG files
-  for (int i = 0; i < numBgImages; i++) {
-    if (backgroundImages[i] != "" && (backgroundImages[i].endsWith(".jpg") || backgroundImages[i].endsWith(".jpeg")) && !filenameContains(backgroundImages[i], "weather")) {  // Exclude weather JPEGs
-      sortedImages[sortedCount++] = backgroundImages[i];
-      backgroundImages[i] = "";  // Mark as processed
-    }
-  }
-
-  // STEP 3: Add regular GIF files (exclude vaultboy.gif and weather GIFs)
-  for (int i = 0; i < numBgImages; i++) {
-    if (backgroundImages[i] != "" && backgroundImages[i].endsWith(".gif") && !filenameContains(backgroundImages[i], "vaultboy") && !filenameContains(backgroundImages[i], "weather")) {
-      sortedImages[sortedCount++] = backgroundImages[i];
-      backgroundImages[i] = "";  // Mark as processed
-    }
-  }
-
-  // STEP 4: Add weather-themed files (both JPEG and GIF)
-  for (int i = 0; i < numBgImages; i++) {
-    if (backgroundImages[i] != "" && filenameContains(backgroundImages[i], "weather")) {
-      sortedImages[sortedCount++] = backgroundImages[i];
-      backgroundImages[i] = "";  // Mark as processed
-    }
-  }
-
-  // STEP 5: Add Pip-Boy theme (vaultboy.gif) last
-  for (int i = 0; i < numBgImages; i++) {
-    if (backgroundImages[i] != "" && filenameContains(backgroundImages[i], "vaultboy")) {
-      sortedImages[sortedCount++] = backgroundImages[i];
-      backgroundImages[i] = "";  // Mark as processed
-    }
-  }
-
-  // STEP 6: Add any remaining files that didn't match our categories
-  for (int i = 0; i < numBgImages; i++) {
-    if (backgroundImages[i] != "") {
-      sortedImages[sortedCount++] = backgroundImages[i];
-    }
-  }
-
-  // Copy sorted array back to backgroundImages
-  for (int i = 0; i < sortedCount; i++) {
-    backgroundImages[i] = sortedImages[i];
-  }
-
-  // Clean up our temporary array
-  delete[] sortedImages;
-
+  
   // Debug print the sorted order
   Serial.println("Sorted background order:");
   for (int i = 0; i < numBgImages; i++) {
     Serial.print(i);
     Serial.print(": ");
-    Serial.println(backgroundImages[i]);
+    Serial.print(backgroundImages[i]);
+    Serial.print(" (Category: ");
+    Serial.print(getFileCategory(backgroundImages[i]));
+    Serial.print(", Prefix: ");
+    Serial.print(getNumericPrefix(backgroundImages[i]));
+    Serial.println(")");
   }
-
+  
   currentBgIndex = 0;
 }
 
-// Add debug function to print current background when cycling
+// Print current background info
 void printCurrentBackground() {
   if (currentBgIndex >= 0 && currentBgIndex < numBgImages) {
     Serial.print("Current background (");
@@ -109,4 +128,4 @@ void printCurrentBackground() {
   }
 }
 
-#endif  // FILE_ORGANIZER_H
+#endif // FILE_ORGANIZER_H
