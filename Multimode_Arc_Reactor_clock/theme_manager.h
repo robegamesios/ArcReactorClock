@@ -16,7 +16,8 @@
 #define MODE_PIPBOY 2
 #define MODE_GIF_DIGITAL 3
 #define MODE_WEATHER 4
-#define MODE_TOTAL 5
+#define MODE_APPLE_RINGS 5
+#define MODE_TOTAL 6
 
 // LED color IDs
 #define COLOR_IRONMAN_RED 0

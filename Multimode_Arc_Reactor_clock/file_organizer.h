@@ -57,9 +57,16 @@ bool isWeatherFile(const String& filename) {
   return lowerFilename.indexOf("weather") >= 0;
 }
 
+bool isAppleRingsFile(const String& filename) {
+  String lowerFilename = filename;
+  lowerFilename.toLowerCase();
+  return lowerFilename.indexOf("apple_rings") >= 0;
+}
+
 // Determine file category (for sorting priority)
-// 0: JPEG, 1: GIF, 2: Weather, 3: Vaultboy, 4: Other
+// 0: JPEG, 1: GIF, 2: Weather, 3: Vaultboy, 4: Apple Rings, 5: Other
 int getFileCategory(const String& filename) {
+  if (isAppleRingsFile(filename)) return 4;
   if (isVaultboyFile(filename)) return 3;
   if (isWeatherFile(filename)) return 2;
   if (isJpegFile(filename)) return 0;
