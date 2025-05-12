@@ -195,7 +195,7 @@ void switchMode(int mode) {
 
   tft.fillScreen(TFT_BLACK);
   currentMode = mode;
-  
+
   Serial.print("Switched to mode: ");
   Serial.println(currentMode);
 
@@ -259,8 +259,7 @@ void cycleBgImage() {
   } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
     if (lowerBgFile.indexOf("weather") >= 0) {
       newMode = MODE_WEATHER;
-    } else if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL || 
-               currentMode == MODE_WEATHER || currentMode == MODE_APPLE_RINGS) {
+    } else if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL || currentMode == MODE_WEATHER || currentMode == MODE_APPLE_RINGS) {
       newMode = MODE_ARC_DIGITAL;
     }
   }
@@ -406,23 +405,23 @@ void checkButtonPress() {
     if (!appleButtonsActive) {
       appleButtonsStartTime = millis();
       appleButtonsActive = true;
-    } else if (millis() - appleButtonsStartTime > 1000) { // Hold for 1 second
+    } else if (millis() - appleButtonsStartTime > 1000) {  // Hold for 1 second
       Serial.println("Force switching to Apple Rings mode");
       currentMode = MODE_APPLE_RINGS;
       initAppleRingsTheme();
       drawAppleRingsInterface();
-      
+
       // Wait until buttons are released to avoid immediate switching
       while (digitalRead(BG_BUTTON_PIN) == LOW || digitalRead(POS_BUTTON_PIN) == LOW) {
         delay(10);
       }
-      
+
       appleButtonsActive = false;
     }
   } else {
     appleButtonsActive = false;
   }
-  
+
   // Check for force save (holding background and color buttons together)
   if (digitalRead(BG_BUTTON_PIN) == LOW && digitalRead(CLR_BUTTON_PIN) == LOW) {
     if (!forceSaveActive) {
@@ -656,10 +655,6 @@ void setup() {
   if (!isClockHidden) {
     updateClockDisplay();
   }
-
-  currentMode = MODE_APPLE_RINGS;
-  initAppleRingsTheme();
-  drawAppleRingsInterface();
 
   // Update LEDs with current color
   updateLEDs();
