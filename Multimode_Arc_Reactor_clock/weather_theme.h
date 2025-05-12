@@ -273,7 +273,7 @@ void drawWeatherInterface() {
   // Draw date
   tft.setTextSize(2);
   char dateStr[20];
-  sprintf(dateStr, "%02d.%02d.%04d", day, month, year);
+  sprintf(dateStr, "%02d.%02d.%04d", month, day, year);
   int dateWidth = strlen(dateStr) * 12;
   tft.setCursor(screenCenterX - (dateWidth / 2), 50);
   tft.println(dateStr);
