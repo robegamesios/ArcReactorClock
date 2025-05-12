@@ -25,6 +25,7 @@
 #include "arc_digital.h"
 #include "arc_analog.h"
 #include "pipboy.h"
+#include "apple_rings_theme.h"
 #include "file_organizer.h"
 
 // Hardware pins
@@ -188,23 +189,35 @@ void switchMode(int mode) {
   if (oldMode == MODE_WEATHER) {
     cleanupWeatherMode();
   }
+  if (oldMode == MODE_APPLE_RINGS) {
+    cleanupAppleRingsMode();
+  }
 
   tft.fillScreen(TFT_BLACK);
   currentMode = mode;
+  
+  Serial.print("Switched to mode: ");
+  Serial.println(currentMode);
 
   if (mode == MODE_WEATHER) {
     initWeatherTheme();
     if (currentWeather.valid) {
       setWeatherLEDColorDirectly();
     }
+  } else if (mode == MODE_APPLE_RINGS) {
+    Serial.println("Initializing Apple Rings Theme");
+    initAppleRingsTheme();
   }
 
   drawBackground();
 
+  // After drawing background, update specific display elements
   if (mode == MODE_GIF_DIGITAL) {
     updateGifDigitalBackground();
   } else if (mode == MODE_WEATHER) {
     updateWeatherTime();
+  } else if (mode == MODE_APPLE_RINGS) {
+    // Apple Rings already drawn in drawBackground
   } else if (!isClockHidden) {
     updateClockDisplay();
   }
@@ -223,9 +236,19 @@ void cycleBgImage() {
   String lowerBgFile = bgFile;
   lowerBgFile.toLowerCase();
 
+  // Debug info
+  Serial.print("Current file: ");
+  Serial.println(bgFile);
+
   int newMode = currentMode;
 
-  if (bgFile.endsWith(".gif")) {
+  // Check for apple rings mode trigger
+  if (lowerBgFile.indexOf("apple") >= 0 || lowerBgFile.indexOf("ring") >= 0) {
+    Serial.println("Detected Apple Rings trigger");
+    newMode = MODE_APPLE_RINGS;
+  }
+  // Then handle other modes
+  else if (bgFile.endsWith(".gif")) {
     if (lowerBgFile.indexOf("vaultboy") >= 0) {
       newMode = MODE_PIPBOY;
     } else if (lowerBgFile.indexOf("weather") >= 0) {
@@ -236,10 +259,14 @@ void cycleBgImage() {
   } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
     if (lowerBgFile.indexOf("weather") >= 0) {
       newMode = MODE_WEATHER;
-    } else if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL || currentMode == MODE_WEATHER) {
+    } else if (currentMode == MODE_PIPBOY || currentMode == MODE_GIF_DIGITAL || 
+               currentMode == MODE_WEATHER || currentMode == MODE_APPLE_RINGS) {
       newMode = MODE_ARC_DIGITAL;
     }
   }
+
+  Serial.print("Switching to mode: ");
+  Serial.println(newMode);
 
   if (newMode != currentMode) {
     switchMode(newMode);
@@ -251,6 +278,9 @@ void cycleBgImage() {
       updateGifDigitalBackground();
     } else if (currentMode == MODE_WEATHER) {
       updateWeatherTime();
+    } else if (currentMode == MODE_APPLE_RINGS) {
+      // Important: redraw interface even if already in Apple Rings mode
+      drawAppleRingsInterface();
     } else if (!isClockHidden) {
       if (currentMode == MODE_ARC_DIGITAL) {
         resetArcDigitalVariables();
@@ -269,7 +299,7 @@ void cycleVerticalPosition() {
     return;
   }
 
-  if (currentMode == MODE_PIPBOY || currentMode == MODE_WEATHER) {
+  if (currentMode == MODE_PIPBOY || currentMode == MODE_WEATHER || currentMode == MODE_APPLE_RINGS) {
     if (currentVertPos == POS_TOP) {
       currentVertPos = POS_CENTER;
     } else if (currentVertPos == POS_CENTER) {
@@ -327,6 +357,8 @@ void checkButtonPress() {
   static bool useWeatherColors = true;
   static unsigned long forceSaveStartTime = 0;
   static bool forceSaveActive = false;
+  static unsigned long appleButtonsStartTime = 0;
+  static bool appleButtonsActive = false;
 
   // Check background button (GPIO 22)
   if (digitalRead(BG_BUTTON_PIN) == LOW) {
@@ -369,6 +401,28 @@ void checkButtonPress() {
     }
   }
 
+  // Special combo: Background + Position buttons for Apple Rings
+  if (digitalRead(BG_BUTTON_PIN) == LOW && digitalRead(POS_BUTTON_PIN) == LOW) {
+    if (!appleButtonsActive) {
+      appleButtonsStartTime = millis();
+      appleButtonsActive = true;
+    } else if (millis() - appleButtonsStartTime > 1000) { // Hold for 1 second
+      Serial.println("Force switching to Apple Rings mode");
+      currentMode = MODE_APPLE_RINGS;
+      initAppleRingsTheme();
+      drawAppleRingsInterface();
+      
+      // Wait until buttons are released to avoid immediate switching
+      while (digitalRead(BG_BUTTON_PIN) == LOW || digitalRead(POS_BUTTON_PIN) == LOW) {
+        delay(10);
+      }
+      
+      appleButtonsActive = false;
+    }
+  } else {
+    appleButtonsActive = false;
+  }
+  
   // Check for force save (holding background and color buttons together)
   if (digitalRead(BG_BUTTON_PIN) == LOW && digitalRead(CLR_BUTTON_PIN) == LOW) {
     if (!forceSaveActive) {
@@ -392,6 +446,9 @@ void checkButtonPress() {
 void drawBackground() {
   tft.fillScreen(TFT_BLACK);
 
+  Serial.print("Drawing background for mode: ");
+  Serial.println(currentMode);
+
   if (numBgImages <= 0 || currentBgIndex < 0 || currentBgIndex >= numBgImages) {
     return;
   }
@@ -402,6 +459,10 @@ void drawBackground() {
     drawPipBoyInterface();
   } else if (currentMode == MODE_WEATHER) {
     drawWeatherInterface();
+  } else if (currentMode == MODE_APPLE_RINGS) {
+    // Explicitly draw Apple Rings instead of JPEG background
+    Serial.println("Drawing Apple Rings interface");
+    drawAppleRingsInterface();
   } else if (currentMode == MODE_GIF_DIGITAL) {
     drawGifDigitalBackground(bgFile.c_str());
   } else if (bgFile.endsWith(".jpg") || bgFile.endsWith(".jpeg")) {
@@ -418,6 +479,11 @@ void updateClockDisplay() {
 
   if (currentMode == MODE_WEATHER) {
     updateWeatherTime();
+    return;
+  }
+
+  if (currentMode == MODE_APPLE_RINGS) {
+    updateAppleRingsTime();
     return;
   }
 
@@ -591,6 +657,10 @@ void setup() {
     updateClockDisplay();
   }
 
+  currentMode = MODE_APPLE_RINGS;
+  initAppleRingsTheme();
+  drawAppleRingsInterface();
+
   // Update LEDs with current color
   updateLEDs();
 }
@@ -613,6 +683,8 @@ void loop() {
       updateGifDigitalBackground();
     } else if (currentMode == MODE_WEATHER) {
       updateClockDisplay();
+    } else if (currentMode == MODE_APPLE_RINGS) {
+      drawAppleRingsInterface();
     } else if (!isClockHidden) {
       updateClockDisplay();
     }
@@ -639,6 +711,13 @@ void loop() {
 
     updateWeatherIcon();
     updateWeatherData();
+  } else if (currentMode == MODE_APPLE_RINGS) {
+    // Apple Rings mode-specific updates
+    if (timeUpdateNeeded) {
+      lastTimeCheck = currentMillis;
+      updateTimeAndDate();
+      updateAppleRingsTime();
+    }
   } else if (!isClockHidden) {
     if (currentMode == MODE_ARC_DIGITAL) {
       if (timeUpdateNeeded) {
