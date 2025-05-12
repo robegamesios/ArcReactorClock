@@ -48,6 +48,7 @@ void drawRing(int x, int y, int radius, int thickness, float startAngle, float e
 void drawTimeDigits();
 void updateTimeDigits();
 void cleanupAppleRingsMode();
+void forceCorrectRingDisplay();
 
 // Initialize the Apple Rings theme - call when switching to this mode
 void initAppleRingsTheme() {
@@ -118,31 +119,67 @@ void drawRing(int x, int y, int radius, int thickness, float startAngle, float e
   }
 }
 
-// Draw the Apple Rings interface - full initialization
-void drawAppleRingsInterface() {
-  Serial.println("Drawing Apple Rings Interface");
+// Force correct display of all rings - improved initialization
+void forceCorrectRingDisplay() {
+  // Force all rings to update on first display
+  prevRingHours = -1;
+  prevRingMinutes = -1;
+  prevRingSeconds = -1;
   
   // Clear the screen
   tft.fillScreen(APPLE_RINGS_BG);
   
-  // Draw complete background rings
-  // Hours ring (inner) - blue
+  // Draw background rings only
   drawRing(screenCenterX, screenCenterY, HOURS_RING_RADIUS, RING_THICKNESS, 
            0, 360, APPLE_BLUE_BG);
-  
-  // Minutes ring (middle) - green
   drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
            0, 360, APPLE_GREEN_BG);
-  
-  // Seconds ring (outer) - red
   drawRing(screenCenterX, screenCenterY, SECONDS_RING_RADIUS, RING_THICKNESS, 
            0, 360, APPLE_RED_BG);
   
   // Mark full redraw as done
   fullRedrawDone = true;
   
-  // Initialize rings with current time
-  updateAppleRingsTime();
+  // Each ring must be explicitly drawn based on current time
+  
+  // Hours ring
+  float hourDegrees = is24Hour ? 15.0 : 30.0;
+  int displayHours = is24Hour ? hours : (hours % 12);
+  if (!is24Hour && displayHours == 0) displayHours = 12;
+  
+  if (displayHours > 0) {
+    float endAngle = -90 + (displayHours * hourDegrees);
+    drawRing(screenCenterX, screenCenterY, HOURS_RING_RADIUS, RING_THICKNESS, 
+             -90, endAngle, APPLE_BLUE);
+  }
+  
+  // Minutes ring
+  if (minutes > 0) {
+    float minuteAngle = -90 + (minutes * 6.0);
+    drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
+             -90, minuteAngle, APPLE_GREEN);
+  }
+  
+  // Seconds ring
+  if (seconds > 0) {
+    float secondAngle = -90 + (seconds * 6.0);
+    drawRing(screenCenterX, screenCenterY, SECONDS_RING_RADIUS, RING_THICKNESS, 
+             -90, secondAngle, APPLE_RED);
+  }
+  
+  // Draw digital time
+  drawTimeDigits();
+  
+  // Update previous values to match current time
+  prevRingHours = hours;
+  prevRingMinutes = minutes;
+  prevRingSeconds = seconds;
+}
+
+// Draw the Apple Rings interface - full initialization
+void drawAppleRingsInterface() {
+  Serial.println("Drawing Apple Rings Interface");
+  forceCorrectRingDisplay();
 }
 
 // Draw digital time in the center - improved spacing
@@ -201,58 +238,100 @@ void updateAppleRingsTime() {
   bool minutesChanged = (minutes != prevRingMinutes);
   bool secondsChanged = (seconds != prevRingSeconds);
   
-  // Update hours ring (innermost)
+  // Update hours ring (innermost) - COMPLETELY FIXED
   if (hoursChanged) {
-    // For 12-hour format: each hour = 30 degrees (360/12)
-    // For 24-hour format: each hour = 15 degrees (360/24)
-    float hourDegrees = is24Hour ? 15.0 : 30.0;
-    
-    // Convert current hour to appropriate format
-    int displayHours = is24Hour ? hours : (hours % 12 == 0 ? 12 : hours % 12);
-    
-    // Only redraw background if hours changed from 12/24 to 1
-    if (prevRingHours == 12 || prevRingHours == 24 || prevRingHours == -1) {
-      drawRing(screenCenterX, screenCenterY, HOURS_RING_RADIUS, RING_THICKNESS, 
-               0, 360, APPLE_BLUE_BG);
+  // For 12-hour format: each hour = 30 degrees (360/12)
+  // For 24-hour format: each hour = 15 degrees (360/24)
+  float hourDegrees = is24Hour ? 15.0 : 30.0;
+  
+  // Convert current hour to appropriate format
+  int displayHours = is24Hour ? hours : (hours % 12);
+  
+  // IMPORTANT: In 12-hour mode, 0 is 12
+  if (!is24Hour && displayHours == 0) {
+    displayHours = 12;
+  }
+  
+  // Midnight transition - full reset to transparent
+  if (hours == 0 && (prevRingHours == 23 || prevRingHours == 11)) {
+    // At midnight, clear everything to background color first
+    drawRing(screenCenterX, screenCenterY, HOURS_RING_RADIUS, RING_THICKNESS + 2, 
+             0, 360, APPLE_RINGS_BG);
+             
+    // Then draw ONLY the background - keep foreground transparent
+    drawRing(screenCenterX, screenCenterY, HOURS_RING_RADIUS, RING_THICKNESS, 
+             0, 360, APPLE_BLUE_BG);
+             
+    // DO NOT draw any foreground at hour 0 (midnight)
+  }
+  // Normal hour transitions
+  else {
+    // Clear with background color for clean redraw if needed
+    if (prevRingHours == -1) {
+      drawRing(screenCenterX, screenCenterY, HOURS_RING_RADIUS, RING_THICKNESS + 2, 
+               0, 360, APPLE_RINGS_BG);
     }
+    
+    // Draw background ring
+    drawRing(screenCenterX, screenCenterY, HOURS_RING_RADIUS, RING_THICKNESS, 
+             0, 360, APPLE_BLUE_BG);
     
     // Calculate end angle based on hours (start from 12 o'clock position)
     float endAngle = -90 + (displayHours * hourDegrees);
-    if (displayHours == 0 || displayHours == 12 || displayHours == 24) {
-      endAngle = 270; // Full circle for 12 or 24 hours
+    
+    // Draw the foreground ring based on hour value
+    if (displayHours > 0) {
+      // Normal hour value - draw progress
+      drawRing(screenCenterX, screenCenterY, HOURS_RING_RADIUS, RING_THICKNESS, 
+               -90, endAngle, APPLE_BLUE);
+    } else if (!is24Hour && displayHours == 12) {
+      // Noon in 12-hour mode - draw full circle
+      drawRing(screenCenterX, screenCenterY, HOURS_RING_RADIUS, RING_THICKNESS, 
+               -90, 270, APPLE_BLUE);
     }
-    
-    // Draw the hour progress ring
-    drawRing(screenCenterX, screenCenterY, HOURS_RING_RADIUS, RING_THICKNESS, 
-             -90, endAngle, APPLE_BLUE);
-    
-    prevRingHours = hours;
   }
   
-  // Update minutes ring (middle) - Fixed to show correct minutes progress
+  prevRingHours = hours;
+}
+  
+  // Update minutes ring (middle) - IMPROVED FIX FOR ARTIFACTS
   if (minutesChanged) {
     // Each minute = 6 degrees (360/60)
     float minuteDegrees = 6.0;
     
-    // FIX: Always redraw background to ensure proper display
-    // This ensures the minutes circle doesn't show as complete when it shouldn't
-    drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
-             0, 360, APPLE_GREEN_BG);
+    // Check if we need to completely reset the ring
+    // This happens at minute rollover or first initialization
+    bool minuteReset = (minutes == 0 && prevRingMinutes > 0) || prevRingMinutes == -1;
     
-    // Calculate end angle based on minutes (start from 12 o'clock position)
-    float endAngle = -90 + (minutes * minuteDegrees);
-    
-    // Fix: Only draw full circle when minutes is actually 0
-    // This prevents the minutes ring from showing full when it shouldn't
-    if (minutes == 0) {
-      // For minute 0, draw either minimal or no segment
-      if (prevRingMinutes != -1) {
-        // Just a tiny segment to prevent complete emptiness
+    if (minuteReset) {
+      // First clear with background color (slightly wider)
+      drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS + 2, 
+               0, 360, APPLE_RINGS_BG);
+               
+      // Then redraw the proper background
+      drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
+               0, 360, APPLE_GREEN_BG);
+               
+      // Don't draw any foreground for minute 0 - this prevents artifacts
+      // The minute hand will start drawing again at minute 1
+    } else if (minutes < prevRingMinutes) {
+      // Handle unusual case (time adjustment)
+      // Clear and redraw background
+      drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
+               0, 360, APPLE_GREEN_BG);
+               
+      // Draw proper segment for current minutes
+      if (minutes > 0) {
+        float endAngle = -90 + (minutes * minuteDegrees);
         drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
-                 -90, -89, APPLE_GREEN);
+                 -90, endAngle, APPLE_GREEN);
       }
     } else {
-      // Draw proper segment for current minutes
+      // Normal minute progression
+      // Calculate end angle based on minutes
+      float endAngle = -90 + (minutes * minuteDegrees);
+      
+      // Draw the proper segment for current minutes
       drawRing(screenCenterX, screenCenterY, MINUTES_RING_RADIUS, RING_THICKNESS, 
                -90, endAngle, APPLE_GREEN);
     }
