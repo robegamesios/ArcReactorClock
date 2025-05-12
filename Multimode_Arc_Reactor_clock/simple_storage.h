@@ -9,8 +9,6 @@
 #include <Arduino.h>
 #include <SPIFFS.h>
 
-// This approach uses SPIFFS file storage which is more reliable on ESP32
-
 // Settings file path
 #define SETTINGS_FILE "/settings.txt"
 
@@ -23,16 +21,12 @@ bool saveSettingsToFile(int bgIndex, int clockMode, int vertPos, int ledColor) {
   // Open file for writing
   File file = SPIFFS.open(SETTINGS_FILE, "w");
   if (!file) {
-    Serial.println("Failed to open settings file for writing");
     return false;
   }
 
   // Write settings
   size_t written = file.print(buffer);
   file.close();
-
-  Serial.print("Saved settings to file: ");
-  Serial.println(buffer);
 
   return (written > 0);
 }
@@ -41,14 +35,12 @@ bool saveSettingsToFile(int bgIndex, int clockMode, int vertPos, int ledColor) {
 bool loadSettingsFromFile(int *bgIndex, int *clockMode, int *vertPos, int *ledColor) {
   // Check if settings file exists
   if (!SPIFFS.exists(SETTINGS_FILE)) {
-    Serial.println("Settings file not found");
     return false;
   }
 
   // Open file for reading
   File file = SPIFFS.open(SETTINGS_FILE, "r");
   if (!file) {
-    Serial.println("Failed to open settings file for reading");
     return false;
   }
 
@@ -57,12 +49,8 @@ bool loadSettingsFromFile(int *bgIndex, int *clockMode, int *vertPos, int *ledCo
   file.close();
 
   if (contents.length() < 3) {
-    Serial.println("Settings file is too short");
     return false;
   }
-
-  Serial.print("Loaded settings from file: ");
-  Serial.println(contents);
 
   // Parse the settings string
   int values[4] = { 0 };
@@ -83,7 +71,6 @@ bool loadSettingsFromFile(int *bgIndex, int *clockMode, int *vertPos, int *ledCo
 
   // Check if we got all four values
   if (valueIndex < 4) {
-    Serial.println("Not enough values in settings file");
     return false;
   }
 
@@ -92,15 +79,6 @@ bool loadSettingsFromFile(int *bgIndex, int *clockMode, int *vertPos, int *ledCo
   *clockMode = values[1];
   *vertPos = values[2];
   *ledColor = values[3];
-
-  Serial.print("Parsed settings - BG: ");
-  Serial.print(*bgIndex);
-  Serial.print(", Mode: ");
-  Serial.print(*clockMode);
-  Serial.print(", Position: ");
-  Serial.print(*vertPos);
-  Serial.print(", Color: ");
-  Serial.println(*ledColor);
 
   return true;
 }

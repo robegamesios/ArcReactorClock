@@ -1,8 +1,6 @@
 /*
  * led_controls.h - Functions for controlling the LED ring
  * For Multi-Mode Digital Clock project
- * 
- * REVISED VERSION - Allows custom LED colors for all modes
  */
 
 #ifndef LED_CONTROLS_H
@@ -10,8 +8,6 @@
 
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
-
-// Include theme manager for access to theme definitions and colors
 #include "theme_manager.h"
 
 // External references
@@ -30,7 +26,7 @@ extern int led_ring_brightness_flash;
 unsigned long lastColorChangeTime = 0;
 bool showColorName = false;
 
-// Function declarations for LED control
+// Function declarations
 void updateLEDs();
 void flashEffect();
 void showColorNameOverlay();
@@ -50,8 +46,10 @@ void updateLEDs() {
   pixels.show();
 }
 
+// Flash effect for the LED ring (used for notifications/transitions)
 void flashEffect() {
   pixels.setBrightness(led_ring_brightness_flash);
+  
   // Set all pixels to white
   for (int i = 0; i < pixels.numPixels(); i++) {
     pixels.setPixelColor(i, pixels.Color(250, 250, 250));
@@ -99,9 +97,7 @@ void showColorNameOverlay() {
 void checkColorNameTimeout() {
   if (showColorName && (millis() - lastColorChangeTime > 2000)) {
     showColorName = false;
-
-    // Redraw the current display to clear the overlay
-    needClockRefresh = true;  // This will trigger a redraw on the next clock update
+    needClockRefresh = true;  // Trigger a redraw on the next clock update
   }
 }
 
