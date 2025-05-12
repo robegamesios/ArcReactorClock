@@ -26,11 +26,11 @@
 #define APPLE_GREEN_BG 0x0300  // Dark green for minutes background
 #define APPLE_RED_BG 0x4000    // Dark red for seconds background
 
-// Ring settings - increased to use more screen space
-#define HOURS_RING_RADIUS 45     // Inner ring (hours) radius
-#define MINUTES_RING_RADIUS 75   // Middle ring (minutes) radius
-#define SECONDS_RING_RADIUS 105  // Outer ring (seconds) radius
-#define RING_THICKNESS 16        // Thickness of each ring
+// Ring settings - updated to make red ring visible near the edge of the screen
+#define HOURS_RING_RADIUS 45      // Inner ring (hours) radius
+#define MINUTES_RING_RADIUS 75    // Middle ring (minutes) radius
+#define SECONDS_RING_RADIUS 105   // Outer ring (seconds) radius - near screen edge but fully visible
+#define RING_THICKNESS 16         // Thickness of each ring
 
 // Track previous time values for optimized updating
 int prevRingHours = -1;
