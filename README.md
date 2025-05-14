@@ -23,4 +23,4 @@ Three buttons for interface control
 
 Perfect addition to your work station. 
 
-Original tutorial: https://www.youtube.com/watch?v=Gn5Qd6zTsrg
+Original tutorial by Jéjé l'ingé: https://www.youtube.com/watch?v=Gn5Qd6zTsrg
